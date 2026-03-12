@@ -33,7 +33,7 @@ export type {
 export { RegimeExpiredError, RegimeNotActiveError } from "./types.js";
 
 // Reference data (read-only)
-export { ELIGIBLE_PROFESSION_CODES } from "./data/eligibleProfessions.js";
+export { ELIGIBLE_PROFESSION_CODES, SUSPECT_PROFESSION_CODES } from "./data/eligibleProfessions.js";
 export { DTA_COUNTRY_CODES } from "./data/dtaCountries.js";
 export { BLACKLISTED_JURISDICTIONS, BLACKLIST_MAP } from "./data/blacklistedJurisdictions.js";
 export type { BlacklistEntry } from "./data/blacklistedJurisdictions.js";

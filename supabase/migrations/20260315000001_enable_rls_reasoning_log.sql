@@ -1,0 +1,22 @@
+-- =============================================================================
+-- Migration: 20260315000001_enable_rls_reasoning_log.sql
+-- Fiscal Guard — CRITICAL security remediation
+--
+-- BUG: Migration 20260312110822 created tax_reasoning_log with two RLS
+-- policies but forgot to call ALTER TABLE ... ENABLE ROW LEVEL SECURITY.
+-- In PostgreSQL, CREATE POLICY statements are silently ignored unless RLS
+-- is first enabled on the table. Until this migration runs, ANY authenticated
+-- user can SELECT all rows from tax_reasoning_log regardless of user_id,
+-- exposing other users' tax treatment, profession codes, and income
+-- classification reasoning.
+--
+-- Fix: enable RLS. The existing policies already restrict SELECT to
+-- auth.uid() = user_id and INSERT WITH CHECK (auth.uid() = user_id).
+-- No policy changes are needed — just the missing ENABLE statement.
+--
+-- GDPR impact: tax_reasoning_log contains personal financial data
+-- (income amounts, regime, treatment, profession codes). Unrestricted
+-- access would be a GDPR Art. 5(1)(f) breach.
+-- =============================================================================
+
+ALTER TABLE public.tax_reasoning_log ENABLE ROW LEVEL SECURITY;

@@ -43,7 +43,13 @@ CREATE INDEX IF NOT EXISTS tax_reasoning_log_pending_idx
   ON tax_reasoning_log (user_id, tax_year)
   WHERE treatment = 'PENDING_MANUAL_REVIEW';
 
--- RLS: Automatic RLS is enabled via DB trigger (per project convention).
+-- RLS: Must be explicitly enabled with ALTER TABLE. PostgreSQL does not
+-- activate RLS automatically; CREATE POLICY alone has no effect until
+-- ENABLE ROW LEVEL SECURITY is called. See remediation migration
+-- 20260315000001_enable_rls_reasoning_log.sql which was created to fix
+-- the live database after this statement was initially missing.
+ALTER TABLE tax_reasoning_log ENABLE ROW LEVEL SECURITY;
+
 -- Policy: users may only read/write their own reasoning log rows.
 
 CREATE POLICY "Users can select own reasoning log"

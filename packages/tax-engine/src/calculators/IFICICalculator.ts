@@ -69,9 +69,27 @@ export class IFICICalculator {
     let pendingManualReviewIncomeCents = 0;
     let blacklist35IncomeCents = 0;
 
+    // Map of event.id → taxableAmountCents after applying Art. 31 CIRS coefficient.
+    // Used both for bucket accumulators and for pro-rate distribution loops below.
+    const taxableAmountMap = new Map<string, number>();
+
     const classifiedEvents: ClassifiedEvent[] = [];
 
     for (const event of events) {
+      // Art. 31 CIRS: regime simplificado coefficient reduces the taxable base for Cat B.
+      // Year 1 (Art. 31(17) CIRS): coefficient × 0.50 → effective 0.375
+      // Year 2 (Art. 31(18) CIRS): coefficient × 0.75 → effective 0.5625
+      // Year 3+: full coefficient 0.75
+      // null/undefined catBCoefficient → no reduction, use full gross.
+      const taxableAmountCents =
+        event.category === "B" && event.catBCoefficient != null
+          ? new Decimal(event.grossAmountCents)
+              .times(event.catBCoefficient)
+              .toDecimalPlaces(0, Decimal.ROUND_HALF_UP)
+              .toNumber()
+          : event.grossAmountCents;
+      taxableAmountMap.set(event.id, taxableAmountCents);
+
       const asOfDate = new Date(event.receivedAt);
       const { treatment, reasoningJson } = this.classifier.classify(event, profile, asOfDate);
 
@@ -83,15 +101,17 @@ export class IFICICalculator {
           // Art. 58-A(3) EBF; Portaria n.º 352/2024, Art. 4(2)
           // taxCents is set to 0 here; pro-rated from aggregate flat20TaxCents below
           // to ensure sum(classifiedEvents.taxCents) === flat20TaxCents exactly.
+          // Art. 31 CIRS coefficient applied: taxable base = gross × catBCoefficient.
           taxCents = 0;
-          flat20IncomeCents += event.grossAmountCents;
+          flat20IncomeCents += taxableAmountCents;
           lawRef = "Art. 58-A(3) EBF; Portaria n.º 352/2024, Art. 4(2) — IFICI 20% flat rate";
           break;
         }
         case "DTA_EXEMPT": {
-          // Portaria n.º 352/2024, Art. 4(1)(b) — exemption method
+          // Portaria n.º 352/2024, Art. 4(1)(b) — exemption method.
+          // Art. 31 CIRS coefficient applied: exempt amount is the taxable equivalent.
           taxCents = 0;
-          dtaExemptIncomeCents += event.grossAmountCents;
+          dtaExemptIncomeCents += taxableAmountCents;
           lawRef = "Portaria n.º 352/2024, Art. 4(1)(b) — DTA exemption method";
           break;
         }
@@ -102,7 +122,7 @@ export class IFICICalculator {
           // only returns these when profile.regime === "NHR").
           // Guard defensively and treat as PROGRESSIVE.
           taxCents = 0;
-          progressiveIncomeCents += event.grossAmountCents;
+          progressiveIncomeCents += taxableAmountCents;
           lawRef =
             "Art. 58-A(3) EBF — Cat H NOT in flat-rate provision; " +
             "taxed at progressive rates under IFICI. Art. 68 CIRS applies.";
@@ -121,8 +141,8 @@ export class IFICICalculator {
           // Income counted in both pendingManualReviewIncomeCents (UI warning) and
           // progressiveIncomeCents (tax calculation).
           taxCents = 0;
-          pendingManualReviewIncomeCents += event.grossAmountCents;
-          progressiveIncomeCents += event.grossAmountCents;
+          pendingManualReviewIncomeCents += taxableAmountCents;
+          progressiveIncomeCents += taxableAmountCents;
           lawRef =
             "Portaria n.º 352/2024, Annex — profession code pending manual review; " +
             "Art. 68 CIRS progressive rates applied conservatively";
@@ -130,7 +150,7 @@ export class IFICICalculator {
         }
         case "PROGRESSIVE": {
           taxCents = 0;
-          progressiveIncomeCents += event.grossAmountCents;
+          progressiveIncomeCents += taxableAmountCents;
           lawRef = "Art. 68 CIRS (progressive brackets) + Art. 68-A CIRS (solidarity surcharge)";
           break;
         }
@@ -138,7 +158,7 @@ export class IFICICalculator {
           // Art. 72(12) CIRS — 35% special rate on Cat E/F/G from blacklisted jurisdictions.
           // taxCents = 0 here; pro-rated from aggregate blacklist35TaxCents below.
           taxCents = 0;
-          blacklist35IncomeCents += event.grossAmountCents;
+          blacklist35IncomeCents += taxableAmountCents;
           lawRef = "Art. 72(12) CIRS — 35% special rate on capital/rental income from blacklisted jurisdictions";
           break;
         }
@@ -153,14 +173,16 @@ export class IFICICalculator {
 
     // Pro-rate progressive tax to individual events for the breakdown UI
     // PENDING_MANUAL_REVIEW events share the progressive bucket — pro-rate them too.
+    // Uses taxable amount (after Art. 31 CIRS coefficient) as the proportioning weight.
     if (progressiveIncomeCents > 0) {
       const proRateFactor = new Decimal(progressiveResult.totalTaxCents).dividedBy(
         progressiveIncomeCents
       );
       for (const ce of classifiedEvents) {
         if (ce.treatment === "PROGRESSIVE" || ce.treatment === "PENDING_MANUAL_REVIEW") {
+          const taxable = taxableAmountMap.get(ce.event.id) ?? ce.event.grossAmountCents;
           ce.taxCents = proRateFactor
-            .times(ce.event.grossAmountCents)
+            .times(taxable)
             .toDecimalPlaces(0, Decimal.ROUND_HALF_UP)
             .toNumber();
         }
@@ -173,12 +195,14 @@ export class IFICICalculator {
 
     // Pro-rate flat-20 tax to individual events so sum(classifiedEvents.taxCents)
     // equals flat20TaxCents exactly (avoids per-event rounding divergence).
+    // Uses taxable amount (after Art. 31 CIRS coefficient) as the proportioning weight.
     if (flat20IncomeCents > 0) {
       const flat20ProRate = new Decimal(flat20TaxCents).dividedBy(flat20IncomeCents);
       for (const ce of classifiedEvents) {
         if (ce.treatment === "FLAT_20") {
+          const taxable = taxableAmountMap.get(ce.event.id) ?? ce.event.grossAmountCents;
           ce.taxCents = flat20ProRate
-            .times(ce.event.grossAmountCents)
+            .times(taxable)
             .toDecimalPlaces(0, Decimal.ROUND_HALF_UP)
             .toNumber();
         }
@@ -194,8 +218,9 @@ export class IFICICalculator {
       const bl35ProRate = new Decimal(blacklist35TaxCents).dividedBy(blacklist35IncomeCents);
       for (const ce of classifiedEvents) {
         if (ce.treatment === "BLACKLIST_35") {
+          const taxable = taxableAmountMap.get(ce.event.id) ?? ce.event.grossAmountCents;
           ce.taxCents = bl35ProRate
-            .times(ce.event.grossAmountCents)
+            .times(taxable)
             .toDecimalPlaces(0, Decimal.ROUND_HALF_UP)
             .toNumber();
         }

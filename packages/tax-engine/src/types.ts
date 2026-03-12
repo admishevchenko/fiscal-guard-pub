@@ -17,6 +17,15 @@ export interface EngineIncomeEvent {
   receivedAt: string;
   /** CNAEF profession code; required for Cat A/B eligibility classification */
   professionCode?: string | undefined;
+  /**
+   * Art. 31 CIRS regime simplificado coefficient. Only applicable to Cat B.
+   * Reduces taxable base: taxable = gross × catBCoefficient
+   * Year 1 of activity (Art. 31(17) CIRS): 0.375
+   * Year 2 of activity (Art. 31(18) CIRS): 0.5625
+   * Year 3+: 0.75 (full coefficient)
+   * null / undefined = 1.0 — no reduction (non-Cat B or no selection)
+   */
+  catBCoefficient?: number | undefined;
 }
 
 export interface EngineTaxProfile {
