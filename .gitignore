@@ -1,0 +1,15 @@
+node_modules/
+.pnpm-store/
+.next/
+dist/
+.expo/
+out/
+.env
+.env.local
+.env.*.local
+supabase/.branches/
+supabase/.temp/
+.turbo/
+coverage/
+.DS_Store
+Thumbs.db
