@@ -4,6 +4,7 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { OnboardingSchema, type OnboardingFormData } from "@/lib/validations/taxProfile";
 import { IncomeEventSchema, type IncomeEventFormData } from "@/lib/validations/incomeEvent";
 import { z } from "zod";
+import Decimal from "decimal.js";
 
 // ---------------------------------------------------------------------------
 // Internal DB row types
@@ -17,6 +18,7 @@ interface TaxProfileRow {
   regime_exit_date: string | null;
   profession_code: string;
   is_innovation_activity: boolean;
+  nhr_pension_exemption_elected: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -58,7 +60,7 @@ export async function getTaxProfile(): Promise<TaxProfileRow | null> {
   const { data } = await supabase
     .from("tax_profiles")
     .select(
-      "id, user_id, regime, regime_entry_date, regime_exit_date, profession_code, is_innovation_activity"
+      "id, user_id, regime, regime_entry_date, regime_exit_date, profession_code, is_innovation_activity, nhr_pension_exemption_elected"
     )
     .eq("user_id", user.id)
     .is("regime_exit_date", null)
@@ -124,6 +126,7 @@ export async function saveTaxProfile(
         regime: formData.regime,
         regime_entry_date: formData.regimeEntryDate,
         profession_code: formData.professionCode,
+        nhr_pension_exemption_elected: formData.nhrPensionExemptionElected ?? false,
         updated_at: new Date().toISOString(),
       })
       .eq("id", (existing as { id: string }).id);
@@ -140,6 +143,7 @@ export async function saveTaxProfile(
         regime: formData.regime,
         regime_entry_date: formData.regimeEntryDate,
         profession_code: formData.professionCode,
+        nhr_pension_exemption_elected: formData.nhrPensionExemptionElected ?? false,
         is_innovation_activity: false,
       });
 
@@ -219,7 +223,7 @@ export async function saveIncomeEvents(
       source_country:
         evt.source === "FOREIGN" ? (evt.sourceCountry ?? "XX") : "PT",
       category: evt.category,
-      gross_amount_cents: Math.round(evt.amountEuros * 100),
+      gross_amount_cents: new Decimal(evt.amountEuros).times(100).round().toNumber(),
       original_currency: "EUR",
       fx_rate_to_eur: "1.00000000",
       description: evt.description ?? null,

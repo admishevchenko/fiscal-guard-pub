@@ -1,6 +1,6 @@
 "use client";
 
-import { useForm } from "react-hook-form";
+import { useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import {
   Form,
@@ -49,8 +49,22 @@ export function Step1Regime({ defaultValues, onNext }: Step1RegimeProps) {
       ...(defaultValues?.regime !== undefined
         ? { regime: defaultValues.regime }
         : {}),
+      ...(defaultValues?.nhrPensionExemptionElected !== undefined
+        ? { nhrPensionExemptionElected: defaultValues.nhrPensionExemptionElected }
+        : {}),
     },
   });
+
+  const regime = useWatch({ control: form.control, name: "regime" });
+  const entryDate = useWatch({ control: form.control, name: "regimeEntryDate" });
+
+  // Lei n.º 2/2020, Art. 12: pension exemption election available only for
+  // NHR holders registered before 2020-01-01
+  const showPensionCheckbox =
+    regime === "NHR" &&
+    entryDate !== "" &&
+    /^\d{4}-\d{2}-\d{2}$/.test(entryDate) &&
+    new Date(entryDate) < new Date("2020-01-01");
 
   return (
     <Form {...form}>
@@ -134,6 +148,38 @@ export function Step1Regime({ defaultValues, onNext }: Step1RegimeProps) {
             </FormItem>
           )}
         />
+
+        {/* NHR pre-2020 pension exemption election (Lei 2/2020, Art. 12) */}
+        {showPensionCheckbox && (
+          <FormField
+            control={form.control}
+            name="nhrPensionExemptionElected"
+            render={({ field }) => (
+              <FormItem className="flex items-start gap-3 rounded-lg border border-amber-300 bg-amber-50 p-4 dark:border-amber-800 dark:bg-amber-950/30">
+                <FormControl>
+                  <input
+                    type="checkbox"
+                    checked={field.value ?? false}
+                    onChange={(e) => field.onChange(e.target.checked)}
+                    className="mt-0.5 h-4 w-4 shrink-0 accent-primary"
+                    aria-label="Elected pre-2020 pension exemption"
+                  />
+                </FormControl>
+                <div>
+                  <FormLabel className="text-sm font-medium">
+                    Elected pre-2020 pension exemption (Lei 2/2020, Art. 12)
+                  </FormLabel>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    NHR holders registered before 1 Jan 2020 may elect to maintain the
+                    original full pension exemption instead of the 10% rate. Check this
+                    if you made this election with the Portuguese Tax Authority.
+                  </p>
+                </div>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+        )}
 
         <div className="flex justify-end">
           <Button type="submit">Next</Button>

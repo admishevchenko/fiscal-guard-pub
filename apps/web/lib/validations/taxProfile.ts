@@ -22,6 +22,13 @@ export const OnboardingSchema = z.object({
   professionCode: z
     .string()
     .regex(/^\d{4}$/, "Profession code must be exactly 4 digits"),
+
+  /**
+   * Lei n.º 2/2020 (OE 2020), Art. 12 transitional provision:
+   * NHR holders registered before 2020-01-01 may elect to maintain the
+   * original pension exemption. Only relevant for regime=NHR + entry < 2020.
+   */
+  nhrPensionExemptionElected: z.boolean().optional(),
 });
 
 export type OnboardingFormData = z.infer<typeof OnboardingSchema>;
@@ -31,6 +38,7 @@ export const Step1Schema = OnboardingSchema.pick({
   displayName: true,
   regime: true,
   regimeEntryDate: true,
+  nhrPensionExemptionElected: true,
 });
 export type Step1Data = z.infer<typeof Step1Schema>;
 

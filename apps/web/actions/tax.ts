@@ -8,6 +8,7 @@ import type {
   CalculationResult,
   ClassifiedEvent,
 } from "@fiscal-guard/tax-engine";
+import { createHash } from "crypto";
 
 // ---------------------------------------------------------------------------
 // Internal DB row shapes (reflect actual migration schema)
@@ -21,6 +22,7 @@ interface DbTaxProfile {
   regime_exit_date: string | null;
   profession_code: string;
   is_innovation_activity: boolean;
+  nhr_pension_exemption_elected: boolean;
 }
 
 interface DbIncomeEvent {
@@ -37,19 +39,62 @@ interface DbIncomeEvent {
 }
 
 // ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Computes a deterministic SHA-256 hash of the profile + events payload.
+ * Used to skip redundant recalculations when the inputs have not changed.
+ */
+function computeInputHash(
+  profile: DbTaxProfile,
+  events: DbIncomeEvent[],
+): string {
+  const payload = JSON.stringify({
+    p: {
+      regime: profile.regime,
+      entry: profile.regime_entry_date,
+      exit: profile.regime_exit_date,
+      code: profile.profession_code,
+      innovation: profile.is_innovation_activity,
+      pensionElected: profile.nhr_pension_exemption_elected,
+    },
+    e: events
+      .slice()
+      .sort((a, b) => a.id.localeCompare(b.id))
+      .map((ev) => ({
+        id: ev.id,
+        cat: ev.category,
+        src: ev.source,
+        sc: ev.source_country,
+        amt: ev.gross_amount_cents,
+        coeff: ev.cat_b_coefficient,
+      })),
+  });
+  return createHash("sha256").update(payload).digest("hex");
+}
+
+// ---------------------------------------------------------------------------
 // Action
 // ---------------------------------------------------------------------------
 
 /**
  * Runs the full NHR/IFICI tax calculation for the given tax year.
  *
+ * **Idempotency**: computes a SHA-256 hash of (profile + events). If the
+ * existing calculation row already has the same hash, the engine is NOT
+ * re-run and no DB writes occur — the cached CalculationResult is returned.
+ * This prevents data bloat and race conditions from repeated page renders.
+ *
  * Flow:
  *  1. Fetch active tax_profile (regime_exit_date IS NULL)
  *  2. Fetch income_events for taxYear
- *  3. Run TaxEngine.calculate()
- *  4. Delete any previous calculation for this user/year, then insert result
- *  5. Insert per-event rows into tax_reasoning_log
- *  6. Return CalculationResult
+ *  3. Compute input hash; if matching cached calculation exists → return early
+ *  4. Run TaxEngine.calculate()
+ *  5. Delete any previous calculation + reasoning log for this user/year
+ *  6. Insert new calculation row with input_hash
+ *  7. Insert per-event rows into tax_reasoning_log
+ *  8. Return CalculationResult
  *
  * Returns null if the user has no active tax_profile or no income events.
  *
@@ -71,7 +116,7 @@ export async function calculateTaxAction(
   const { data: taxProfileData } = await supabase
     .from("tax_profiles")
     .select(
-      "id, user_id, regime, regime_entry_date, regime_exit_date, profession_code, is_innovation_activity"
+      "id, user_id, regime, regime_entry_date, regime_exit_date, profession_code, is_innovation_activity, nhr_pension_exemption_elected"
     )
     .eq("user_id", user.id)
     .is("regime_exit_date", null)
@@ -94,13 +139,25 @@ export async function calculateTaxAction(
 
   const dbEvents = eventsData as DbIncomeEvent[];
 
-  // ── 3. Map DB rows → EngineIncomeEvent ──────────────────────────────────
+  // ── 3. Idempotency check — skip recalc if inputs unchanged ──────────────
+  const inputHash = computeInputHash(taxProfile, dbEvents);
+
+  const { data: existingCalc } = await supabase
+    .from("calculations")
+    .select("id, input_hash, calculation_metadata")
+    .eq("user_id", user.id)
+    .eq("tax_year", taxYear)
+    .maybeSingle();
+
+  // ── 4. Map DB rows → EngineIncomeEvent ──────────────────────────────────
   const engineProfile: EngineTaxProfile = {
     regime: taxProfile.regime,
     regimeEntryDate: taxProfile.regime_entry_date,
     regimeExitDate: taxProfile.regime_exit_date,
     professionCode: taxProfile.profession_code,
     isInnovationActivity: taxProfile.is_innovation_activity,
+    // Lei n.º 2/2020, Art. 12: pre-2020 NHR holders who elected pension exemption
+    nhrPensionExemptionElected: taxProfile.nhr_pension_exemption_elected,
   };
 
   // Use Dec 31 of the tax year as the point-in-time reference for the
@@ -114,6 +171,7 @@ export async function calculateTaxAction(
     grossAmountCents: evt.gross_amount_cents,
     source: evt.source,
     sourceCountry: evt.source_country,
+    description: evt.description,
     receivedAt,
     professionCode: taxProfile.profession_code,
     // Art. 31 CIRS: pass the stored regime simplificado coefficient to the engine.
@@ -121,14 +179,27 @@ export async function calculateTaxAction(
     catBCoefficient: evt.cat_b_coefficient ?? undefined,
   }));
 
-  // ── 4. Run calculation ───────────────────────────────────────────────────
+  // ── 5. Run calculation ───────────────────────────────────────────────────
   const engine = new TaxEngine(engineProfile);
   const result = engine.calculate(engineEvents, taxYear);
 
-  // ── 5. Replace calculation row (delete + insert, no unique constraint) ───
-  // The calculations table only has a non-unique index on (user_id, tax_year).
-  // We delete the previous result for this year and insert a fresh one so the
-  // dashboard always shows the latest calculation.
+  // If the cached hash matches, the inputs haven't changed — skip DB writes
+  if (
+    existingCalc &&
+    (existingCalc as { input_hash?: string }).input_hash === inputHash
+  ) {
+    return result;
+  }
+
+  // ── 6. Replace calculation row + clear stale reasoning log ──────────────
+  // Delete previous calc and reasoning rows atomically before inserting fresh
+  // ones. This prevents data bloat from repeated renders.
+  await supabase
+    .from("tax_reasoning_log")
+    .delete()
+    .eq("user_id", user.id)
+    .eq("tax_year", taxYear);
+
   await supabase
     .from("calculations")
     .delete()
@@ -141,6 +212,7 @@ export async function calculateTaxAction(
       user_id: user.id,
       tax_profile_id: taxProfile.id,
       tax_year: taxYear,
+      input_hash: inputHash,
       pt_taxable_income_cents: result.flat20IncomeCents,
       foreign_exempt_income_cents: result.dtaExemptIncomeCents,
       blacklisted_jurisdiction_income_cents: result.blacklist35IncomeCents,
@@ -159,7 +231,7 @@ export async function calculateTaxAction(
     return result;
   }
 
-  // ── 6. Insert per-event reasoning log rows ───────────────────────────────
+  // ── 7. Insert per-event reasoning log rows ───────────────────────────────
   const calcId = (calcRow as { id: string } | null)?.id;
   if (calcId) {
     const reasoningRows = result.classifiedEvents.map((ce: ClassifiedEvent) => ({

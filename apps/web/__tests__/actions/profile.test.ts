@@ -155,7 +155,7 @@ describe("saveIncomeEvents", () => {
     await saveIncomeEvents([
       { taxYear: 2026, category: "A", amountEuros: 10000, source: "DOMESTIC" },
     ]);
-    const row = mockInsert.mock.calls[0][0][0];
+    const row = mockInsert.mock.calls[0]![0]![0]!;
     expect(row.source).toBe("PT");
   });
 
@@ -163,7 +163,7 @@ describe("saveIncomeEvents", () => {
     await saveIncomeEvents([
       { taxYear: 2026, category: "A", amountEuros: 140000, source: "DOMESTIC" },
     ]);
-    const row = mockInsert.mock.calls[0][0][0];
+    const row = mockInsert.mock.calls[0]![0]![0]!;
     expect(row.gross_amount_cents).toBe(14_000_000);
   });
 
@@ -177,7 +177,7 @@ describe("saveIncomeEvents", () => {
         catBActivityYear: 1,
       },
     ]);
-    const row = mockInsert.mock.calls[0][0][0];
+    const row = mockInsert.mock.calls[0]![0]![0]!;
     expect(row.cat_b_coefficient).toBe(0.375);
   });
 
@@ -191,7 +191,7 @@ describe("saveIncomeEvents", () => {
         catBActivityYear: 2,
       },
     ]);
-    const row = mockInsert.mock.calls[0][0][0];
+    const row = mockInsert.mock.calls[0]![0]![0]!;
     expect(row.cat_b_coefficient).toBe(0.5625);
   });
 
@@ -199,7 +199,7 @@ describe("saveIncomeEvents", () => {
     await saveIncomeEvents([
       { taxYear: 2026, category: "A", amountEuros: 50000, source: "DOMESTIC" },
     ]);
-    const row = mockInsert.mock.calls[0][0][0];
+    const row = mockInsert.mock.calls[0]![0]![0]!;
     expect(Object.keys(row)).not.toContain("cat_b_coefficient");
   });
 
@@ -213,7 +213,7 @@ describe("saveIncomeEvents", () => {
         sourceCountry: "GB",
       },
     ]);
-    const row = mockInsert.mock.calls[0][0][0];
+    const row = mockInsert.mock.calls[0]![0]![0]!;
     expect(row.source).toBe("FOREIGN");
     expect(row.source_country).toBe("GB");
   });
@@ -230,7 +230,7 @@ describe("saveIncomeEvents", () => {
     await saveIncomeEvents([
       { taxYear: 2026, category: "G", amountEuros: 50000, source: "DOMESTIC" },
     ]);
-    const row = mockInsert.mock.calls[0][0][0];
+    const row = mockInsert.mock.calls[0]![0]![0]!;
     expect(row.category).toBe("G");
     expect(row.source).toBe("PT");
     expect(row.gross_amount_cents).toBe(5_000_000);
@@ -242,7 +242,7 @@ describe("saveIncomeEvents", () => {
     await saveIncomeEvents([
       { taxYear: 2026, category: "E", amountEuros: 8000, source: "DOMESTIC" },
     ]);
-    const row = mockInsert.mock.calls[0][0][0];
+    const row = mockInsert.mock.calls[0]![0]![0]!;
     expect(row.category).toBe("E");
     expect(row.source).toBe("PT");
     expect(row.gross_amount_cents).toBe(800_000);
@@ -260,7 +260,7 @@ describe("saveIncomeEvents", () => {
         sourceCountry: "US",
       },
     ]);
-    const row = mockInsert.mock.calls[0][0][0];
+    const row = mockInsert.mock.calls[0]![0]![0]!;
     expect(row.category).toBe("E");
     expect(row.source).toBe("FOREIGN");
     expect(row.source_country).toBe("US");
@@ -272,7 +272,7 @@ describe("saveIncomeEvents", () => {
     await saveIncomeEvents([
       { taxYear: 2026, category: "F", amountEuros: 24000, source: "DOMESTIC" },
     ]);
-    const row = mockInsert.mock.calls[0][0][0];
+    const row = mockInsert.mock.calls[0]![0]![0]!;
     expect(row.category).toBe("F");
     expect(row.source).toBe("PT");
     expect(row.gross_amount_cents).toBe(2_400_000);
@@ -289,7 +289,7 @@ describe("saveIncomeEvents", () => {
         sourceCountry: "DE",
       },
     ]);
-    const row = mockInsert.mock.calls[0][0][0];
+    const row = mockInsert.mock.calls[0]![0]![0]!;
     expect(row.source).toBe("FOREIGN");
     expect(row.source_country).toBe("DE");
   });
@@ -305,7 +305,7 @@ describe("saveIncomeEvents", () => {
         sourceCountry: "GB",
       },
     ]);
-    const row = mockInsert.mock.calls[0][0][0];
+    const row = mockInsert.mock.calls[0]![0]![0]!;
     expect(row.category).toBe("G");
     expect(row.source).toBe("FOREIGN");
     expect(row.source_country).toBe("GB");
@@ -317,7 +317,7 @@ describe("saveIncomeEvents", () => {
     await saveIncomeEvents([
       { taxYear: 2026, category: "H", amountEuros: 18000, source: "DOMESTIC" },
     ]);
-    const row = mockInsert.mock.calls[0][0][0];
+    const row = mockInsert.mock.calls[0]![0]![0]!;
     expect(row.category).toBe("H");
     expect(row.source).toBe("PT");
     expect(row.gross_amount_cents).toBe(1_800_000);
@@ -335,7 +335,7 @@ describe("saveIncomeEvents", () => {
         sourceCountry: "FR",
       },
     ]);
-    const row = mockInsert.mock.calls[0][0][0];
+    const row = mockInsert.mock.calls[0]![0]![0]!;
     expect(row.category).toBe("H");
     expect(row.source).toBe("FOREIGN");
     expect(row.source_country).toBe("FR");
@@ -352,7 +352,7 @@ describe("saveIncomeEvents", () => {
         catBActivityYear: 3,
       },
     ]);
-    const row = mockInsert.mock.calls[0][0][0];
+    const row = mockInsert.mock.calls[0]![0]![0]!;
     expect(row.cat_b_coefficient).toBe(0.75);
   });
 
@@ -369,13 +369,39 @@ describe("saveIncomeEvents", () => {
       },
       { taxYear: 2026, category: "G", amountEuros: 30000, source: "DOMESTIC" },
     ]);
-    const rows = mockInsert.mock.calls[0][0];
+    const rows = mockInsert.mock.calls[0]![0]!;
     expect(rows.length).toBe(3);
     expect(rows[0].category).toBe("A");
     expect(rows[1].category).toBe("B");
     expect(rows[1].cat_b_coefficient).toBe(0.375);
     expect(rows[2].category).toBe("G");
     expect(Object.keys(rows[2])).not.toContain("cat_b_coefficient");
+  });
+
+  // Decimal.js conversion: verifying correct euro→cents using project convention
+  // (Decimal.js prevents IEEE 754 floating-point artifacts in monetary math)
+  it("converts 19.99 euros to 1999 cents (Decimal.js precision)", async () => {
+    await saveIncomeEvents([
+      { taxYear: 2026, category: "A", amountEuros: 19.99, source: "DOMESTIC" },
+    ]);
+    const row = mockInsert.mock.calls[0]![0]![0]!;
+    expect(row.gross_amount_cents).toBe(1999);
+  });
+
+  it("converts 99999.99 euros to 9999999 cents (large amount Decimal.js)", async () => {
+    await saveIncomeEvents([
+      { taxYear: 2026, category: "A", amountEuros: 99999.99, source: "DOMESTIC" },
+    ]);
+    const row = mockInsert.mock.calls[0]![0]![0]!;
+    expect(row.gross_amount_cents).toBe(9999999);
+  });
+
+  it("converts 0.01 euros to 1 cent exactly", async () => {
+    await saveIncomeEvents([
+      { taxYear: 2026, category: "A", amountEuros: 0.01, source: "DOMESTIC" },
+    ]);
+    const row = mockInsert.mock.calls[0]![0]![0]!;
+    expect(row.gross_amount_cents).toBe(1);
   });
 });
 
