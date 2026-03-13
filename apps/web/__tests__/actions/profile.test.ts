@@ -236,6 +236,147 @@ describe("saveIncomeEvents", () => {
     expect(row.gross_amount_cents).toBe(5_000_000);
     expect(Object.keys(row)).not.toContain("cat_b_coefficient");
   });
+
+  // Art. 5 CIRS — Cat E covers investment income (rendimentos de capitais)
+  it("saves Cat E DOMESTIC income with source PT and no coefficient", async () => {
+    await saveIncomeEvents([
+      { taxYear: 2026, category: "E", amountEuros: 8000, source: "DOMESTIC" },
+    ]);
+    const row = mockInsert.mock.calls[0][0][0];
+    expect(row.category).toBe("E");
+    expect(row.source).toBe("PT");
+    expect(row.gross_amount_cents).toBe(800_000);
+    expect(Object.keys(row)).not.toContain("cat_b_coefficient");
+  });
+
+  // Art. 5 CIRS — Cat E foreign investment income from a DTA country
+  it("saves Cat E FOREIGN income with source country", async () => {
+    await saveIncomeEvents([
+      {
+        taxYear: 2026,
+        category: "E",
+        amountEuros: 15000,
+        source: "FOREIGN",
+        sourceCountry: "US",
+      },
+    ]);
+    const row = mockInsert.mock.calls[0][0][0];
+    expect(row.category).toBe("E");
+    expect(row.source).toBe("FOREIGN");
+    expect(row.source_country).toBe("US");
+    expect(row.gross_amount_cents).toBe(1_500_000);
+  });
+
+  // Art. 8 CIRS — Cat F covers rental income (rendimentos prediais)
+  it("saves Cat F DOMESTIC rental income with source PT", async () => {
+    await saveIncomeEvents([
+      { taxYear: 2026, category: "F", amountEuros: 24000, source: "DOMESTIC" },
+    ]);
+    const row = mockInsert.mock.calls[0][0][0];
+    expect(row.category).toBe("F");
+    expect(row.source).toBe("PT");
+    expect(row.gross_amount_cents).toBe(2_400_000);
+  });
+
+  // Art. 8 CIRS — Cat F foreign rental income
+  it("saves Cat F FOREIGN rental income with source country", async () => {
+    await saveIncomeEvents([
+      {
+        taxYear: 2026,
+        category: "F",
+        amountEuros: 36000,
+        source: "FOREIGN",
+        sourceCountry: "DE",
+      },
+    ]);
+    const row = mockInsert.mock.calls[0][0][0];
+    expect(row.source).toBe("FOREIGN");
+    expect(row.source_country).toBe("DE");
+  });
+
+  // Art. 10 CIRS — Cat G foreign capital gains
+  it("saves Cat G FOREIGN capital gains with source country", async () => {
+    await saveIncomeEvents([
+      {
+        taxYear: 2026,
+        category: "G",
+        amountEuros: 100000,
+        source: "FOREIGN",
+        sourceCountry: "GB",
+      },
+    ]);
+    const row = mockInsert.mock.calls[0][0][0];
+    expect(row.category).toBe("G");
+    expect(row.source).toBe("FOREIGN");
+    expect(row.source_country).toBe("GB");
+    expect(row.gross_amount_cents).toBe(10_000_000);
+  });
+
+  // Art. 11 CIRS — Cat H covers pension income (rendimentos de pensões)
+  it("saves Cat H DOMESTIC pension income with no coefficient", async () => {
+    await saveIncomeEvents([
+      { taxYear: 2026, category: "H", amountEuros: 18000, source: "DOMESTIC" },
+    ]);
+    const row = mockInsert.mock.calls[0][0][0];
+    expect(row.category).toBe("H");
+    expect(row.source).toBe("PT");
+    expect(row.gross_amount_cents).toBe(1_800_000);
+    expect(Object.keys(row)).not.toContain("cat_b_coefficient");
+  });
+
+  // Art. 11 CIRS — Cat H foreign pension income
+  it("saves Cat H FOREIGN pension income with source country", async () => {
+    await saveIncomeEvents([
+      {
+        taxYear: 2026,
+        category: "H",
+        amountEuros: 30000,
+        source: "FOREIGN",
+        sourceCountry: "FR",
+      },
+    ]);
+    const row = mockInsert.mock.calls[0][0][0];
+    expect(row.category).toBe("H");
+    expect(row.source).toBe("FOREIGN");
+    expect(row.source_country).toBe("FR");
+  });
+
+  // Art. 31(1)(d) CIRS — Cat B Year 3+ uses standard 0.75 coefficient
+  it("sets cat_b_coefficient to 0.75 for Cat B Year 3 (Art. 31 CIRS)", async () => {
+    await saveIncomeEvents([
+      {
+        taxYear: 2026,
+        category: "B",
+        amountEuros: 80000,
+        source: "DOMESTIC",
+        catBActivityYear: 3,
+      },
+    ]);
+    const row = mockInsert.mock.calls[0][0][0];
+    expect(row.cat_b_coefficient).toBe(0.75);
+  });
+
+  // Batch insert — verify multiple heterogeneous events are saved in a single call
+  it("saves multiple events in one call with correct per-row mapping", async () => {
+    await saveIncomeEvents([
+      { taxYear: 2026, category: "A", amountEuros: 50000, source: "DOMESTIC" },
+      {
+        taxYear: 2026,
+        category: "B",
+        amountEuros: 100000,
+        source: "DOMESTIC",
+        catBActivityYear: 1,
+      },
+      { taxYear: 2026, category: "G", amountEuros: 30000, source: "DOMESTIC" },
+    ]);
+    const rows = mockInsert.mock.calls[0][0];
+    expect(rows.length).toBe(3);
+    expect(rows[0].category).toBe("A");
+    expect(rows[1].category).toBe("B");
+    expect(rows[1].cat_b_coefficient).toBe(0.375);
+    expect(rows[2].category).toBe("G");
+    expect(Object.keys(rows[2])).not.toContain("cat_b_coefficient");
+  });
 });
 
 describe("deleteIncomeEvent", () => {

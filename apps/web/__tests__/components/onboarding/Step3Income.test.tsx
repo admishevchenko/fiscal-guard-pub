@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, within } from "@testing-library/react";
+import { render, screen, within, fireEvent, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { Step3Income } from "@/components/onboarding/Step3Income";
 
@@ -170,5 +170,75 @@ describe("Step3Income", () => {
   it("disables Finish setup button while isSubmitting is true", () => {
     render(<Step3Income {...defaultProps} isSubmitting={true} />);
     expect(screen.getByRole("button", { name: /saving/i })).toBeDisabled();
+  });
+
+  it.each([
+    ["E", /E — Capital income/i],
+    ["F", /F — Property rental/i],
+    ["G", /G — Capital gains/i],
+    ["H", /H — Pensions/i],
+  ] as const)("submits successfully with category %s selected", async (catCode, catLabel) => {
+    const user = userEvent.setup();
+    const onSubmit = vi.fn();
+    render(<Step3Income onSubmit={onSubmit} onBack={vi.fn()} />);
+
+    // Select category
+    const categoryTriggers = screen.getAllByRole("combobox");
+    await user.click(categoryTriggers[1]!); // index 1 = category
+    const option = await screen.findByRole("option", { name: catLabel });
+    await user.click(option);
+
+    // Fill amount
+    const amountInput = screen.getByLabelText(/amount/i);
+    await user.clear(amountInput);
+    await user.type(amountInput, "25000");
+
+    await user.click(screen.getByRole("button", { name: /finish setup/i }));
+
+    expect(onSubmit).toHaveBeenCalledWith(
+      expect.arrayContaining([
+        expect.objectContaining({ category: catCode, amountEuros: 25000 }),
+      ])
+    );
+  });
+
+  it.each(["E", "F", "G", "H"])("does not show coefficient field for category %s", async (cat) => {
+    const user = userEvent.setup();
+    render(<Step3Income {...defaultProps} />);
+
+    const labels: Record<string, RegExp> = {
+      E: /E — Capital income/i,
+      F: /F — Property rental/i,
+      G: /G — Capital gains/i,
+      H: /H — Pensions/i,
+    };
+
+    const categoryTriggers = screen.getAllByRole("combobox");
+    await user.click(categoryTriggers[1]!);
+    const option = await screen.findByRole("option", { name: labels[cat]! });
+    await user.click(option);
+
+    expect(screen.queryByText(/regime simplificado year/i)).not.toBeInTheDocument();
+  });
+
+  it("rejects amount with more than 2 decimal places on submit", async () => {
+    const { toast } = await import("sonner");
+    const onSubmit = vi.fn();
+    render(<Step3Income onSubmit={onSubmit} onBack={vi.fn()} />);
+
+    // Use fireEvent.change to set the value — userEvent.type + step="0.01"
+    // triggers jsdom's HTML5 constraint validation which blocks the submit
+    // event before React Hook Form's resolver runs.
+    const amountInput = screen.getByLabelText(/amount/i);
+    fireEvent.change(amountInput, { target: { value: "100.123" } });
+
+    // Submit via fireEvent.submit to bypass HTML5 step constraint validation
+    fireEvent.submit(amountInput.closest("form")!);
+
+    // Zod resolver is async — wait for the validation error callback
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalled();
+    });
+    expect(onSubmit).not.toHaveBeenCalled();
   });
 });

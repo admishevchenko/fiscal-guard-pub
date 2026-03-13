@@ -79,6 +79,70 @@ describe("calculateTaxAction", () => {
     vi.clearAllMocks();
   });
 
+  // --- Helper: set up Supabase mock for calculation tests ---
+  function setupCalcMock(
+    profile: Record<string, unknown>,
+    events: Record<string, unknown>[],
+  ) {
+    vi.mocked(createSupabaseServerClient).mockResolvedValueOnce({
+      auth: {
+        getUser: vi
+          .fn()
+          .mockResolvedValue({ data: { user: { id: "u1" } } }),
+      },
+      from: vi.fn((table: string) => {
+        if (table === "tax_profiles") {
+          return {
+            select: vi.fn().mockReturnValue({
+              eq: vi.fn().mockReturnThis(),
+              is: vi.fn().mockReturnThis(),
+              maybeSingle: vi.fn().mockResolvedValue({ data: profile }),
+            }),
+          };
+        }
+        if (table === "income_events") {
+          return {
+            select: vi.fn().mockReturnValue({
+              eq: vi.fn().mockReturnValue({
+                eq: vi.fn().mockResolvedValue({ data: events }),
+              }),
+            }),
+          };
+        }
+        if (table === "calculations") {
+          return {
+            delete: vi.fn().mockReturnValue({ eq: vi.fn().mockReturnThis() }),
+            insert: vi.fn().mockReturnValue({
+              select: vi.fn().mockReturnThis(),
+              single: vi.fn().mockResolvedValue({
+                data: { id: "calc-1" },
+                error: null,
+              }),
+            }),
+          };
+        }
+        return { insert: vi.fn().mockResolvedValue({ error: null }) };
+      }),
+    } as any);
+  }
+
+  // --- Helper: build an income event with defaults ---
+  function makeEvent(
+    overrides: Partial<(typeof VALID_EVENTS)[0]> & { id?: string },
+  ) {
+    return {
+      id: "evt-1",
+      tax_year: 2026,
+      category: "A",
+      gross_amount_cents: 5_000_000,
+      source: "PT",
+      source_country: "PT",
+      description: null,
+      cat_b_coefficient: null,
+      ...overrides,
+    };
+  }
+
   it("returns null when user is not authenticated", async () => {
     vi.mocked(createSupabaseServerClient).mockResolvedValueOnce({
       auth: { getUser: vi.fn().mockResolvedValue({ data: { user: null } }) },
@@ -338,5 +402,332 @@ describe("calculateTaxAction", () => {
     expect(result!.progressiveIncomeCents).toBe(5_000_000);
     // Progressive tax must be positive (some tax owed at general rates)
     expect(result!.progressiveTaxCents).toBeGreaterThan(0);
+  });
+
+  // ===================================================================
+  // Comprehensive calculation tests — income classification & tax math
+  // ===================================================================
+
+  it("NHR + PT Cat A non-eligible profession → PROGRESSIVE (Art. 68 CIRS)", async () => {
+    setupCalcMock(
+      { ...VALID_PROFILE, profession_code: "9999" },
+      [makeEvent({ category: "A", source: "PT", source_country: "PT", gross_amount_cents: 5_000_000 })],
+    );
+    const result = await calculateTaxAction(2026);
+    expect(result).not.toBeNull();
+    expect(result!.flat20TaxCents).toBe(0);
+    expect(result!.progressiveIncomeCents).toBe(5_000_000);
+    expect(result!.progressiveTaxCents).toBeGreaterThan(0);
+  });
+
+  it("NHR + PT Cat A suspect profession (2433) → PROGRESSIVE conservative (Portaria 352/2024)", async () => {
+    setupCalcMock(
+      { ...VALID_PROFILE, profession_code: "2433" },
+      [makeEvent({ category: "A", source: "PT", source_country: "PT", gross_amount_cents: 5_000_000 })],
+    );
+    const result = await calculateTaxAction(2026);
+    expect(result).not.toBeNull();
+    expect(result!.flat20TaxCents).toBe(0);
+    // Suspect codes land in progressive bucket with a manual-review flag
+    expect(result!.progressiveIncomeCents).toBeGreaterThanOrEqual(5_000_000);
+    expect(result!.pendingManualReviewIncomeCents).toBe(5_000_000);
+  });
+
+  it("NHR + PT Cat B eligible Yr1 → FLAT_20 at 37.5% base (Art. 31(17) CIRS)", async () => {
+    setupCalcMock(
+      { ...VALID_PROFILE },
+      [makeEvent({
+        category: "B",
+        source: "PT",
+        source_country: "PT",
+        gross_amount_cents: 10_000_000,
+        cat_b_coefficient: 0.375,
+      })],
+    );
+    const result = await calculateTaxAction(2026);
+    expect(result).not.toBeNull();
+    // 100,000€ × 0.375 × 0.20 = 7,500€ = 750,000 cents
+    expect(result!.flat20TaxCents).toBe(750_000);
+  });
+
+  it("NHR + PT Cat B eligible Yr2 → FLAT_20 at 56.25% base (Art. 31(18) CIRS)", async () => {
+    setupCalcMock(
+      { ...VALID_PROFILE },
+      [makeEvent({
+        category: "B",
+        source: "PT",
+        source_country: "PT",
+        gross_amount_cents: 10_000_000,
+        cat_b_coefficient: 0.5625,
+      })],
+    );
+    const result = await calculateTaxAction(2026);
+    expect(result).not.toBeNull();
+    // 100,000€ × 0.5625 × 0.20 = 11,250€ = 1,125,000 cents
+    expect(result!.flat20TaxCents).toBe(1_125_000);
+  });
+
+  it("NHR + PT Cat B eligible Yr3 → FLAT_20 at 75% base (Art. 31 CIRS)", async () => {
+    setupCalcMock(
+      { ...VALID_PROFILE },
+      [makeEvent({
+        category: "B",
+        source: "PT",
+        source_country: "PT",
+        gross_amount_cents: 10_000_000,
+        cat_b_coefficient: 0.75,
+      })],
+    );
+    const result = await calculateTaxAction(2026);
+    expect(result).not.toBeNull();
+    // 100,000€ × 0.75 × 0.20 = 15,000€ = 1,500,000 cents
+    expect(result!.flat20TaxCents).toBe(1_500_000);
+  });
+
+  it("NHR + PT Cat E → PROGRESSIVE (Art. 5 / Art. 68 CIRS)", async () => {
+    setupCalcMock(
+      { ...VALID_PROFILE },
+      [makeEvent({ category: "E", source: "PT", source_country: "PT", gross_amount_cents: 5_000_000 })],
+    );
+    const result = await calculateTaxAction(2026);
+    expect(result).not.toBeNull();
+    expect(result!.flat20TaxCents).toBe(0);
+    expect(result!.progressiveIncomeCents).toBe(5_000_000);
+  });
+
+  it("NHR + Cat E FOREIGN DTA (US) → DTA_EXEMPT (Portaria 352/2024 Art. 4(1)(b))", async () => {
+    setupCalcMock(
+      { ...VALID_PROFILE },
+      [makeEvent({
+        category: "E",
+        source: "FOREIGN",
+        source_country: "US",
+        gross_amount_cents: 5_000_000,
+      })],
+    );
+    const result = await calculateTaxAction(2026);
+    expect(result).not.toBeNull();
+    expect(result!.dtaExemptIncomeCents).toBe(5_000_000);
+    expect(result!.flat20TaxCents).toBe(0);
+  });
+
+  it("NHR + Cat E FOREIGN blacklisted (PA) → BLACKLIST_35 (Art. 72(12) CIRS)", async () => {
+    setupCalcMock(
+      { ...VALID_PROFILE },
+      [makeEvent({
+        category: "E",
+        source: "FOREIGN",
+        source_country: "PA",
+        gross_amount_cents: 5_000_000,
+      })],
+    );
+    const result = await calculateTaxAction(2026);
+    expect(result).not.toBeNull();
+    expect(result!.blacklist35IncomeCents).toBe(5_000_000);
+    expect(result!.blacklist35TaxCents).toBe(1_750_000);
+  });
+
+  it("NHR + PT Cat F → PROGRESSIVE (Art. 8 / Art. 68 CIRS)", async () => {
+    setupCalcMock(
+      { ...VALID_PROFILE },
+      [makeEvent({ category: "F", source: "PT", source_country: "PT", gross_amount_cents: 5_000_000 })],
+    );
+    const result = await calculateTaxAction(2026);
+    expect(result).not.toBeNull();
+    expect(result!.flat20TaxCents).toBe(0);
+    expect(result!.progressiveIncomeCents).toBe(5_000_000);
+  });
+
+  it("NHR + Cat F FOREIGN DTA (DE) → DTA_EXEMPT (Portaria 352/2024)", async () => {
+    setupCalcMock(
+      { ...VALID_PROFILE },
+      [makeEvent({
+        category: "F",
+        source: "FOREIGN",
+        source_country: "DE",
+        gross_amount_cents: 5_000_000,
+      })],
+    );
+    const result = await calculateTaxAction(2026);
+    expect(result).not.toBeNull();
+    expect(result!.dtaExemptIncomeCents).toBe(5_000_000);
+  });
+
+  it("NHR + Cat G FOREIGN DTA (GB) → DTA_EXEMPT (Portaria 352/2024)", async () => {
+    setupCalcMock(
+      { ...VALID_PROFILE },
+      [makeEvent({
+        category: "G",
+        source: "FOREIGN",
+        source_country: "GB",
+        gross_amount_cents: 5_000_000,
+      })],
+    );
+    const result = await calculateTaxAction(2026);
+    expect(result).not.toBeNull();
+    expect(result!.dtaExemptIncomeCents).toBe(5_000_000);
+  });
+
+  it("NHR + Cat G FOREIGN blacklisted (PA) → BLACKLIST_35 (Art. 72(12) CIRS)", async () => {
+    setupCalcMock(
+      { ...VALID_PROFILE },
+      [makeEvent({
+        category: "G",
+        source: "FOREIGN",
+        source_country: "PA",
+        gross_amount_cents: 5_000_000,
+      })],
+    );
+    const result = await calculateTaxAction(2026);
+    expect(result).not.toBeNull();
+    expect(result!.blacklist35IncomeCents).toBe(5_000_000);
+    expect(result!.blacklist35TaxCents).toBe(1_750_000);
+  });
+
+  it("NHR + PT Cat H → PROGRESSIVE (Art. 11 / Art. 68 CIRS)", async () => {
+    setupCalcMock(
+      { ...VALID_PROFILE },
+      [makeEvent({ category: "H", source: "PT", source_country: "PT", gross_amount_cents: 5_000_000 })],
+    );
+    const result = await calculateTaxAction(2026);
+    expect(result).not.toBeNull();
+    expect(result!.flat20TaxCents).toBe(0);
+    expect(result!.progressiveIncomeCents).toBe(5_000_000);
+  });
+
+  /**
+   * The action does not populate nhrPensionExemptionElected from the DB,
+   * so even pre-2020 entrants default to PENSION_10PCT (no election = no exemption).
+   * Once the DB field is added, this test should be updated to verify PENSION_EXEMPT.
+   */
+  it("NHR + Cat H FOREIGN pre-2020 → PENSION_10PCT (nhrPensionExemptionElected not mapped from DB) (Art. 72(10) + Lei 2/2020)", async () => {
+    setupCalcMock(
+      { ...VALID_PROFILE, regime_entry_date: "2019-06-01" },
+      [makeEvent({
+        category: "H",
+        source: "FOREIGN",
+        source_country: "FR",
+        gross_amount_cents: 5_000_000,
+      })],
+    );
+    const result = await calculateTaxAction(2026);
+    expect(result).not.toBeNull();
+    expect(result!.pensionExemptIncomeCents).toBe(0);
+    expect(result!.pension10pctIncomeCents).toBe(5_000_000);
+    expect(result!.pension10pctTaxCents).toBe(500_000);
+  });
+
+  it("NHR + Cat H FOREIGN post-2020 → PENSION_10PCT (Art. 72(10) CIRS as amended)", async () => {
+    setupCalcMock(
+      { ...VALID_PROFILE, regime_entry_date: "2022-01-01" },
+      [makeEvent({
+        category: "H",
+        source: "FOREIGN",
+        source_country: "FR",
+        gross_amount_cents: 5_000_000,
+      })],
+    );
+    const result = await calculateTaxAction(2026);
+    expect(result).not.toBeNull();
+    expect(result!.pension10pctIncomeCents).toBe(5_000_000);
+    expect(result!.pension10pctTaxCents).toBe(500_000);
+  });
+
+  it("IFICI + PT Cat A eligible → FLAT_20 (Art. 58-A(1) EBF)", async () => {
+    setupCalcMock(
+      { ...VALID_PROFILE, regime: "IFICI", profession_code: "2131" },
+      [makeEvent({ category: "A", source: "PT", source_country: "PT", gross_amount_cents: 5_000_000 })],
+    );
+    const result = await calculateTaxAction(2026);
+    expect(result).not.toBeNull();
+    expect(result!.flat20TaxCents).toBe(1_000_000);
+    expect(result!.regime).toBe("IFICI");
+  });
+
+  it("IFICI + PT Cat A non-eligible → PROGRESSIVE (Art. 68 CIRS)", async () => {
+    setupCalcMock(
+      { ...VALID_PROFILE, regime: "IFICI", profession_code: "9999" },
+      [makeEvent({ category: "A", source: "PT", source_country: "PT", gross_amount_cents: 5_000_000 })],
+    );
+    const result = await calculateTaxAction(2026);
+    expect(result).not.toBeNull();
+    expect(result!.flat20TaxCents).toBe(0);
+    expect(result!.progressiveIncomeCents).toBe(5_000_000);
+  });
+
+  it("IFICI + PT Cat B eligible Yr1 → FLAT_20 at 37.5% (Art. 58-A EBF + Art. 31 CIRS)", async () => {
+    setupCalcMock(
+      { ...VALID_PROFILE, regime: "IFICI", profession_code: "2131" },
+      [makeEvent({
+        category: "B",
+        source: "PT",
+        source_country: "PT",
+        gross_amount_cents: 10_000_000,
+        cat_b_coefficient: 0.375,
+      })],
+    );
+    const result = await calculateTaxAction(2026);
+    expect(result).not.toBeNull();
+    // 100,000€ × 0.375 × 0.20 = 7,500€ = 750,000 cents
+    expect(result!.flat20TaxCents).toBe(750_000);
+  });
+
+  it("IFICI + Cat E FOREIGN DTA (US) → DTA_EXEMPT (Portaria 352/2024)", async () => {
+    setupCalcMock(
+      { ...VALID_PROFILE, regime: "IFICI", profession_code: "2131" },
+      [makeEvent({
+        category: "E",
+        source: "FOREIGN",
+        source_country: "US",
+        gross_amount_cents: 5_000_000,
+      })],
+    );
+    const result = await calculateTaxAction(2026);
+    expect(result).not.toBeNull();
+    expect(result!.dtaExemptIncomeCents).toBe(5_000_000);
+  });
+
+  it("IFICI + Cat H FOREIGN → PROGRESSIVE, NO pension exemption (Art. 58-A EBF)", async () => {
+    setupCalcMock(
+      { ...VALID_PROFILE, regime: "IFICI", profession_code: "2131" },
+      [makeEvent({
+        category: "H",
+        source: "FOREIGN",
+        source_country: "FR",
+        gross_amount_cents: 5_000_000,
+      })],
+    );
+    const result = await calculateTaxAction(2026);
+    expect(result).not.toBeNull();
+    expect(result!.pension10pctIncomeCents).toBe(0);
+    expect(result!.pensionExemptIncomeCents).toBe(0);
+    expect(result!.progressiveIncomeCents).toBe(5_000_000);
+    expect(result!.progressiveTaxCents).toBeGreaterThan(0);
+  });
+
+  it("IFICI + PT Cat H → PROGRESSIVE (Art. 58-A EBF)", async () => {
+    setupCalcMock(
+      { ...VALID_PROFILE, regime: "IFICI", profession_code: "2131" },
+      [makeEvent({ category: "H", source: "PT", source_country: "PT", gross_amount_cents: 5_000_000 })],
+    );
+    const result = await calculateTaxAction(2026);
+    expect(result).not.toBeNull();
+    expect(result!.progressiveIncomeCents).toBe(5_000_000);
+  });
+
+  it("Mixed events: NHR Cat A FLAT_20 + Cat E DTA_EXEMPT + Cat G PROGRESSIVE", async () => {
+    setupCalcMock(
+      { ...VALID_PROFILE },
+      [
+        makeEvent({ id: "evt-a", category: "A", source: "PT", source_country: "PT", gross_amount_cents: 5_000_000 }),
+        makeEvent({ id: "evt-e", category: "E", source: "FOREIGN", source_country: "US", gross_amount_cents: 2_000_000 }),
+        makeEvent({ id: "evt-g", category: "G", source: "PT", source_country: "PT", gross_amount_cents: 3_000_000 }),
+      ],
+    );
+    const result = await calculateTaxAction(2026);
+    expect(result).not.toBeNull();
+    expect(result!.flat20IncomeCents).toBe(5_000_000);
+    expect(result!.dtaExemptIncomeCents).toBe(2_000_000);
+    expect(result!.progressiveIncomeCents).toBe(3_000_000);
   });
 });
