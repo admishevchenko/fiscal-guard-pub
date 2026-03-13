@@ -173,6 +173,12 @@ export interface CalculationResult {
   solidaritySurchargeCents: number;
 
   // --- Totals ---
+  /**
+   * Sum of all events' raw grossAmountCents BEFORE any Art. 31 CIRS coefficient
+   * reduction. This is the real income the user earned — shown in the dashboard
+   * "Total Gross Income" card. The bucket fields (flat20IncomeCents etc.) hold
+   * taxable amounts (after coefficient) and are used for tax math.
+   */
   totalGrossIncomeCents: number;
   totalTaxCents: number;
   /** Effective overall rate: totalTax / totalGross, 8dp Decimal string */

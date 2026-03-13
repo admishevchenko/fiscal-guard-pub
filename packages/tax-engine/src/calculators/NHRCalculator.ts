@@ -63,6 +63,9 @@ export class NHRCalculator {
     let progressiveIncomeCents = 0;
     let pendingManualReviewIncomeCents = 0;
     let blacklist35IncomeCents = 0;
+    // Tracks the sum of raw grossAmountCents BEFORE any Art. 31 CIRS coefficient
+    // reduction. Used for the totalGrossIncomeCents field and effective rate.
+    let totalRealGrossIncomeCents = 0;
 
     // Map of event.id → taxableAmountCents after applying Art. 31 CIRS coefficient.
     // Used both for bucket accumulators and for pro-rate distribution loops below.
@@ -84,6 +87,8 @@ export class NHRCalculator {
               .toNumber()
           : event.grossAmountCents;
       taxableAmountMap.set(event.id, taxableAmountCents);
+      // Accumulate real gross BEFORE coefficient — this is what the user actually earned.
+      totalRealGrossIncomeCents += event.grossAmountCents;
 
       const asOfDate = new Date(event.receivedAt);
       const { treatment, reasoningJson } = this.classifier.classify(event, profile, asOfDate);
@@ -243,13 +248,12 @@ export class NHRCalculator {
     }
 
     const totalTaxCents = flat20TaxCents + progressiveResult.totalTaxCents + blacklist35TaxCents + pension10pctTaxCents;
-    const totalGrossIncomeCents =
-      flat20IncomeCents +
-      dtaExemptIncomeCents +
-      pensionExemptIncomeCents +
-      pension10pctIncomeCents +
-      progressiveIncomeCents +
-      blacklist35IncomeCents;
+
+    // totalGrossIncomeCents = sum of raw event.grossAmountCents (before Art. 31 CIRS
+    // coefficient). This is the real income the user earned, shown in the dashboard.
+    // The income buckets (flat20IncomeCents etc.) use taxable amounts for tax math;
+    // we use the real gross only for the display total and effective rate.
+    const totalGrossIncomeCents = totalRealGrossIncomeCents;
 
     const effectiveRate =
       totalGrossIncomeCents === 0
