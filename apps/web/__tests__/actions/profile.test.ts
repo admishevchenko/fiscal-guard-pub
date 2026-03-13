@@ -219,9 +219,12 @@ describe("saveIncomeEvents", () => {
   });
 
   /**
-   * Regression test for Cat G (capital gains / incrementos patrimoniais) domestic income.
-   * Per Art. 10 CIRS, Cat G domestic → source='PT', no cat_b_coefficient.
-   * IncomeClassifier will classify this as PROGRESSIVE (Art. 68 CIRS).
+   * Regression: Cat G (capital gains / incrementos patrimoniais) domestic income
+   * must be persisted with source='PT' and no cat_b_coefficient (Art. 10 CIRS).
+   * IncomeClassifier Rule 5 (Art. 68 CIRS) classifies this as PROGRESSIVE —
+   * the conservative safe default.
+   * NOTE: Art. 72(1)(b) CIRS autonomous 28% rate and Art. 43(2) CIRS 50% inclusion
+   * are not yet modelled in the engine.
    */
   it("saves Cat G (capital gains) DOMESTIC income with correct DB mapping", async () => {
     await saveIncomeEvents([

@@ -91,10 +91,11 @@ export function OnboardingWizard() {
           ? "Income events added! Recalculating your dashboard…"
           : "Profile saved! Redirecting to your dashboard…"
       );
-      router.push("/dashboard");
-      // Bust the Next.js Router Cache so the dashboard fetches fresh data
-      // (includes the newly saved income events and recalculated tax)
+      // Invalidate Router Cache BEFORE navigating so any pre-fetched snapshot
+      // of /dashboard is discarded prior to the push (Next.js App Router pattern
+      // for post-mutation cache busting).
       router.refresh();
+      router.push("/dashboard");
     } catch (err) {
       const message = err instanceof Error ? err.message : "Unexpected error";
       toast.error(message);

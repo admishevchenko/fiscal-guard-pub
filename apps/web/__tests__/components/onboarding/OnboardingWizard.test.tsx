@@ -151,4 +151,38 @@ describe("OnboardingWizard", () => {
     expect(saveTaxProfile).toHaveBeenCalled();
     expect(saveIncomeEvents).toHaveBeenCalled();
   });
+
+  it("calls router.refresh() then router.push('/dashboard') on full flow submit", async () => {
+    const user = userEvent.setup();
+    render(<OnboardingWizard />);
+
+    await completeStep1(user);
+    await completeStep2(user);
+
+    const amountInput = await screen.findByLabelText(/amount/i);
+    await user.clear(amountInput);
+    await user.type(amountInput, "50000");
+    await user.click(screen.getByRole("button", { name: /finish setup/i }));
+
+    expect(mockRefresh).toHaveBeenCalled();
+    expect(mockPush).toHaveBeenCalledWith("/dashboard");
+    // refresh() must be called before push() to invalidate any pre-fetched snapshot
+    const refreshOrder = mockRefresh.mock.invocationCallOrder[0];
+    const pushOrder = mockPush.mock.invocationCallOrder[0];
+    expect(refreshOrder).toBeLessThan(pushOrder);
+  });
+
+  it("calls router.refresh() on ?step=income add-income-only submit", async () => {
+    const user = userEvent.setup();
+    mockSearchParams = new URLSearchParams("step=income");
+    render(<OnboardingWizard />);
+
+    const amountInput = screen.getByLabelText(/amount/i);
+    await user.clear(amountInput);
+    await user.type(amountInput, "60000");
+    await user.click(screen.getByRole("button", { name: /finish setup/i }));
+
+    expect(mockRefresh).toHaveBeenCalled();
+    expect(mockPush).toHaveBeenCalledWith("/dashboard");
+  });
 });

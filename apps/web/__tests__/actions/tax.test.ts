@@ -271,4 +271,72 @@ describe("calculateTaxAction", () => {
       regime: "NHR",
     });
   });
+
+  /**
+   * Regression: Cat G (capital gains / incrementos patrimoniais) domestic income
+   * must flow through the entire action pipeline and land in progressiveTaxCents,
+   * not flat20TaxCents (Art. 10 CIRS → IncomeClassifier Rule 5 → PROGRESSIVE).
+   *
+   * NOTE: Art. 72(1)(b) CIRS autonomous 28% rate and Art. 43(2) CIRS 50% inclusion
+   * are not yet modelled — conservative PROGRESSIVE treatment (Art. 68 CIRS) is
+   * intentionally used as the safe default.
+   */
+  it("Cat G domestic: progressiveIncomeCents > 0, flat20TaxCents = 0 (Art. 10 / Art. 68 CIRS)", async () => {
+    const CAT_G_EVENTS = [
+      {
+        id: "evt-g",
+        tax_year: 2026,
+        category: "G",
+        gross_amount_cents: 5_000_000, // €50,000
+        source: "PT",
+        source_country: "PT",
+        description: null,
+        cat_b_coefficient: null,
+      },
+    ];
+
+    vi.mocked(createSupabaseServerClient).mockResolvedValueOnce({
+      auth: { getUser: vi.fn().mockResolvedValue({ data: { user: { id: "u1" } } }) },
+      from: vi.fn((table: string) => {
+        if (table === "tax_profiles") {
+          return {
+            select: vi.fn().mockReturnValue({
+              eq: vi.fn().mockReturnThis(),
+              is: vi.fn().mockReturnThis(),
+              maybeSingle: vi.fn().mockResolvedValue({ data: VALID_PROFILE }),
+            }),
+          };
+        }
+        if (table === "income_events") {
+          return {
+            select: vi.fn().mockReturnValue({
+              eq: vi.fn().mockReturnValue({
+                eq: vi.fn().mockResolvedValue({ data: CAT_G_EVENTS }),
+              }),
+            }),
+          };
+        }
+        if (table === "calculations") {
+          return {
+            delete: vi.fn().mockReturnValue({ eq: vi.fn().mockReturnThis() }),
+            insert: vi.fn().mockReturnValue({
+              select: vi.fn().mockReturnThis(),
+              single: vi.fn().mockResolvedValue({ data: { id: "calc-g" }, error: null }),
+            }),
+          };
+        }
+        return { insert: vi.fn().mockResolvedValue({ error: null }) };
+      }),
+    } as any);
+
+    const result = await calculateTaxAction(2026);
+
+    expect(result).not.toBeNull();
+    // Cat G domestic → PROGRESSIVE; no flat-rate tax
+    expect(result!.flat20TaxCents).toBe(0);
+    // Progressive income must include the full €50,000
+    expect(result!.progressiveIncomeCents).toBe(5_000_000);
+    // Progressive tax must be positive (some tax owed at general rates)
+    expect(result!.progressiveTaxCents).toBeGreaterThan(0);
+  });
 });
