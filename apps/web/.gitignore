@@ -1,0 +1,18 @@
+# Next.js build output
+.next/
+out/
+
+# Dependencies
+node_modules/
+
+# Environment variables (never commit secrets)
+.env
+.env.local
+.env*.local
+
+# TypeScript incremental build info
+*.tsbuildinfo
+
+# OS
+.DS_Store
+Thumbs.db
