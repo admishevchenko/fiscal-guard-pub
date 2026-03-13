@@ -18,6 +18,13 @@ const { mockFrom, mockGetUser } = vi.hoisted(() => {
   const mockFrom = vi.fn((table: string) => {
     if (table === "calculations") {
       return {
+        select: vi.fn().mockReturnValue({
+          eq: vi.fn().mockReturnValue({
+            eq: vi.fn().mockReturnValue({
+              maybeSingle: vi.fn().mockResolvedValue({ data: null }),
+            }),
+          }),
+        }),
         delete: vi.fn().mockReturnValue({ eq: vi.fn().mockReturnThis() }),
         insert: vi.fn().mockReturnValue({
           select: vi.fn().mockReturnThis(),
@@ -26,7 +33,10 @@ const { mockFrom, mockGetUser } = vi.hoisted(() => {
       };
     }
     if (table === "tax_reasoning_log") {
-      return { insert: vi.fn().mockResolvedValue({ error: null }) };
+      return {
+        delete: vi.fn().mockReturnValue({ eq: vi.fn().mockReturnThis() }),
+        insert: vi.fn().mockResolvedValue({ error: null }),
+      };
     }
     // tax_profiles and income_events
     return {
@@ -59,6 +69,7 @@ const VALID_PROFILE = {
   regime_exit_date: null,
   profession_code: "2131",
   is_innovation_activity: false,
+  nhr_pension_exemption_elected: false,
 };
 
 const VALID_EVENTS = [
@@ -70,7 +81,7 @@ const VALID_EVENTS = [
     source: "PT",
     source_country: "PT",
     description: null,
-    cat_b_coefficient: null,
+    cat_b_coefficient: null as number | null,
   },
 ];
 
@@ -111,8 +122,14 @@ describe("calculateTaxAction", () => {
         }
         if (table === "calculations") {
           return {
-            delete: vi.fn().mockReturnValue({ eq: vi.fn().mockReturnThis() }),
-            insert: vi.fn().mockReturnValue({
+            select: vi.fn().mockReturnValue({
+              eq: vi.fn().mockReturnValue({
+                eq: vi.fn().mockReturnValue({
+                  maybeSingle: vi.fn().mockResolvedValue({ data: null }),
+                }),
+              }),
+            }),
+            upsert: vi.fn().mockReturnValue({
               select: vi.fn().mockReturnThis(),
               single: vi.fn().mockResolvedValue({
                 data: { id: "calc-1" },
@@ -121,7 +138,10 @@ describe("calculateTaxAction", () => {
             }),
           };
         }
-        return { insert: vi.fn().mockResolvedValue({ error: null }) };
+        return {
+          delete: vi.fn().mockReturnValue({ eq: vi.fn().mockReturnThis() }),
+          insert: vi.fn().mockResolvedValue({ error: null }),
+        };
       }),
     } as any);
   }
@@ -138,7 +158,7 @@ describe("calculateTaxAction", () => {
       source: "PT",
       source_country: "PT",
       description: null,
-      cat_b_coefficient: null,
+      cat_b_coefficient: null as number | null,
       ...overrides,
     };
   }
@@ -199,7 +219,6 @@ describe("calculateTaxAction", () => {
   });
 
   it("returns CalculationResult for NHR + PT Cat A eligible profession (flat20 = 20% of gross)", async () => {
-    const deleteEq = vi.fn().mockReturnThis();
     vi.mocked(createSupabaseServerClient).mockResolvedValueOnce({
       auth: { getUser: vi.fn().mockResolvedValue({ data: { user: { id: "u1" } } }) },
       from: vi.fn((table: string) => {
@@ -223,14 +242,23 @@ describe("calculateTaxAction", () => {
         }
         if (table === "calculations") {
           return {
-            delete: vi.fn().mockReturnValue({ eq: vi.fn().mockReturnThis() }),
-            insert: vi.fn().mockReturnValue({
+            select: vi.fn().mockReturnValue({
+              eq: vi.fn().mockReturnValue({
+                eq: vi.fn().mockReturnValue({
+                  maybeSingle: vi.fn().mockResolvedValue({ data: null }),
+                }),
+              }),
+            }),
+            upsert: vi.fn().mockReturnValue({
               select: vi.fn().mockReturnThis(),
               single: vi.fn().mockResolvedValue({ data: { id: "calc-1" }, error: null }),
             }),
           };
         }
-        return { insert: vi.fn().mockResolvedValue({ error: null }) };
+        return {
+          delete: vi.fn().mockReturnValue({ eq: vi.fn().mockReturnThis() }),
+          insert: vi.fn().mockResolvedValue({ error: null }),
+        };
       }),
     } as any);
 
@@ -243,9 +271,8 @@ describe("calculateTaxAction", () => {
     expect(result!.regime).toBe("NHR");
   });
 
-  it("deletes existing calculation for the year before inserting", async () => {
-    const deleteFn = vi.fn().mockReturnValue({ eq: vi.fn().mockReturnThis() });
-    const insertFn = vi.fn().mockReturnValue({
+  it("upserts calculation row atomically (no delete+insert race)", async () => {
+    const upsertFn = vi.fn().mockReturnValue({
       select: vi.fn().mockReturnThis(),
       single: vi.fn().mockResolvedValue({ data: { id: "calc-1" }, error: null }),
     });
@@ -272,16 +299,27 @@ describe("calculateTaxAction", () => {
           };
         }
         if (table === "calculations") {
-          return { delete: deleteFn, insert: insertFn };
+          return {
+            select: vi.fn().mockReturnValue({
+              eq: vi.fn().mockReturnValue({
+                eq: vi.fn().mockReturnValue({
+                  maybeSingle: vi.fn().mockResolvedValue({ data: null }),
+                }),
+              }),
+            }),
+            upsert: upsertFn,
+          };
         }
-        return { insert: vi.fn().mockResolvedValue({ error: null }) };
+        return {
+          delete: vi.fn().mockReturnValue({ eq: vi.fn().mockReturnThis() }),
+          insert: vi.fn().mockResolvedValue({ error: null }),
+        };
       }),
     } as any);
 
     await calculateTaxAction(2026);
 
-    expect(deleteFn).toHaveBeenCalled();
-    expect(insertFn).toHaveBeenCalled();
+    expect(upsertFn).toHaveBeenCalled();
   });
 
   it("inserts reasoning log rows after successful calculation", async () => {
@@ -310,24 +348,36 @@ describe("calculateTaxAction", () => {
         }
         if (table === "calculations") {
           return {
-            delete: vi.fn().mockReturnValue({ eq: vi.fn().mockReturnThis() }),
-            insert: vi.fn().mockReturnValue({
+            select: vi.fn().mockReturnValue({
+              eq: vi.fn().mockReturnValue({
+                eq: vi.fn().mockReturnValue({
+                  maybeSingle: vi.fn().mockResolvedValue({ data: null }),
+                }),
+              }),
+            }),
+            upsert: vi.fn().mockReturnValue({
               select: vi.fn().mockReturnThis(),
               single: vi.fn().mockResolvedValue({ data: { id: "calc-99" }, error: null }),
             }),
           };
         }
         if (table === "tax_reasoning_log") {
-          return { insert: logInsert };
+          return {
+            delete: vi.fn().mockReturnValue({ eq: vi.fn().mockReturnThis() }),
+            insert: logInsert,
+          };
         }
-        return { insert: vi.fn().mockResolvedValue({ error: null }) };
+        return {
+          delete: vi.fn().mockReturnValue({ eq: vi.fn().mockReturnThis() }),
+          insert: vi.fn().mockResolvedValue({ error: null }),
+        };
       }),
     } as any);
 
     await calculateTaxAction(2026);
 
     expect(logInsert).toHaveBeenCalled();
-    const logRows = logInsert.mock.calls[0][0];
+    const logRows = logInsert.mock.calls[0]![0]!;
     expect(Array.isArray(logRows)).toBe(true);
     expect(logRows[0]).toMatchObject({
       user_id: "u1",
@@ -355,7 +405,7 @@ describe("calculateTaxAction", () => {
         source: "PT",
         source_country: "PT",
         description: null,
-        cat_b_coefficient: null,
+        cat_b_coefficient: null as number | null,
       },
     ];
 
@@ -382,14 +432,23 @@ describe("calculateTaxAction", () => {
         }
         if (table === "calculations") {
           return {
-            delete: vi.fn().mockReturnValue({ eq: vi.fn().mockReturnThis() }),
-            insert: vi.fn().mockReturnValue({
+            select: vi.fn().mockReturnValue({
+              eq: vi.fn().mockReturnValue({
+                eq: vi.fn().mockReturnValue({
+                  maybeSingle: vi.fn().mockResolvedValue({ data: null }),
+                }),
+              }),
+            }),
+            upsert: vi.fn().mockReturnValue({
               select: vi.fn().mockReturnThis(),
               single: vi.fn().mockResolvedValue({ data: { id: "calc-g" }, error: null }),
             }),
           };
         }
-        return { insert: vi.fn().mockResolvedValue({ error: null }) };
+        return {
+          delete: vi.fn().mockReturnValue({ eq: vi.fn().mockReturnThis() }),
+          insert: vi.fn().mockResolvedValue({ error: null }),
+        };
       }),
     } as any);
 
@@ -596,13 +655,12 @@ describe("calculateTaxAction", () => {
   });
 
   /**
-   * The action does not populate nhrPensionExemptionElected from the DB,
-   * so even pre-2020 entrants default to PENSION_10PCT (no election = no exemption).
-   * Once the DB field is added, this test should be updated to verify PENSION_EXEMPT.
+   * Pre-2020 NHR holder who did NOT elect pension exemption → PENSION_10PCT.
+   * Lei n.º 2/2020, Art. 12: without election, 10% rate applies.
    */
-  it("NHR + Cat H FOREIGN pre-2020 → PENSION_10PCT (nhrPensionExemptionElected not mapped from DB) (Art. 72(10) + Lei 2/2020)", async () => {
+  it("NHR + Cat H FOREIGN pre-2020 + no election → PENSION_10PCT (Art. 72(10) + Lei 2/2020)", async () => {
     setupCalcMock(
-      { ...VALID_PROFILE, regime_entry_date: "2019-06-01" },
+      { ...VALID_PROFILE, regime_entry_date: "2019-06-01", nhr_pension_exemption_elected: false },
       [makeEvent({
         category: "H",
         source: "FOREIGN",
@@ -615,6 +673,27 @@ describe("calculateTaxAction", () => {
     expect(result!.pensionExemptIncomeCents).toBe(0);
     expect(result!.pension10pctIncomeCents).toBe(5_000_000);
     expect(result!.pension10pctTaxCents).toBe(500_000);
+  });
+
+  /**
+   * Pre-2020 NHR holder who ELECTED pension exemption → PENSION_EXEMPT (0% tax).
+   * Lei n.º 2/2020, Art. 12 transitional provision.
+   */
+  it("NHR + Cat H FOREIGN pre-2020 + elected exemption → PENSION_EXEMPT (Lei 2/2020, Art. 12)", async () => {
+    setupCalcMock(
+      { ...VALID_PROFILE, regime_entry_date: "2019-06-01", nhr_pension_exemption_elected: true },
+      [makeEvent({
+        category: "H",
+        source: "FOREIGN",
+        source_country: "FR",
+        gross_amount_cents: 5_000_000,
+      })],
+    );
+    const result = await calculateTaxAction(2026);
+    expect(result).not.toBeNull();
+    expect(result!.pensionExemptIncomeCents).toBe(5_000_000);
+    expect(result!.pension10pctIncomeCents).toBe(0);
+    expect(result!.pension10pctTaxCents).toBe(0);
   });
 
   it("NHR + Cat H FOREIGN post-2020 → PENSION_10PCT (Art. 72(10) CIRS as amended)", async () => {
@@ -729,5 +808,146 @@ describe("calculateTaxAction", () => {
     expect(result!.flat20IncomeCents).toBe(5_000_000);
     expect(result!.dtaExemptIncomeCents).toBe(2_000_000);
     expect(result!.progressiveIncomeCents).toBe(3_000_000);
+  });
+
+  // ===================================================================
+  // Idempotency tests — skip recalc when inputs unchanged
+  // ===================================================================
+
+  it("skips DB writes when input_hash matches existing calculation", async () => {
+    // We need to intercept the upsert calls to verify they are NOT called.
+    const upsertFn = vi.fn().mockReturnValue({
+      select: vi.fn().mockReturnThis(),
+      single: vi.fn().mockResolvedValue({ data: { id: "calc-1" }, error: null }),
+    });
+
+    vi.mocked(createSupabaseServerClient).mockResolvedValueOnce({
+      auth: { getUser: vi.fn().mockResolvedValue({ data: { user: { id: "u1" } } }) },
+      from: vi.fn((table: string) => {
+        if (table === "tax_profiles") {
+          return {
+            select: vi.fn().mockReturnValue({
+              eq: vi.fn().mockReturnThis(),
+              is: vi.fn().mockReturnThis(),
+              maybeSingle: vi.fn().mockResolvedValue({ data: VALID_PROFILE }),
+            }),
+          };
+        }
+        if (table === "income_events") {
+          return {
+            select: vi.fn().mockReturnValue({
+              eq: vi.fn().mockReturnValue({
+                eq: vi.fn().mockResolvedValue({ data: VALID_EVENTS }),
+              }),
+            }),
+          };
+        }
+        if (table === "calculations") {
+          // Simulate existing calc with a matching hash.
+          // We compute the real hash by importing createHash.
+          const { createHash } = require("crypto");
+          const payload = JSON.stringify({
+            p: {
+              regime: VALID_PROFILE.regime,
+              entry: VALID_PROFILE.regime_entry_date,
+              exit: VALID_PROFILE.regime_exit_date,
+              code: VALID_PROFILE.profession_code,
+              innovation: VALID_PROFILE.is_innovation_activity,
+              pensionElected: VALID_PROFILE.nhr_pension_exemption_elected,
+            },
+            e: VALID_EVENTS.slice()
+              .sort((a: any, b: any) => a.id.localeCompare(b.id))
+              .map((ev: any) => ({
+                id: ev.id,
+                cat: ev.category,
+                src: ev.source,
+                sc: ev.source_country,
+                amt: ev.gross_amount_cents,
+                coeff: ev.cat_b_coefficient,
+              })),
+          });
+          const matchingHash = createHash("sha256").update(payload).digest("hex");
+
+          return {
+            select: vi.fn().mockReturnValue({
+              eq: vi.fn().mockReturnValue({
+                eq: vi.fn().mockReturnValue({
+                  maybeSingle: vi.fn().mockResolvedValue({
+                    data: { id: "calc-cached", input_hash: matchingHash },
+                  }),
+                }),
+              }),
+            }),
+            upsert: upsertFn,
+          };
+        }
+        return {
+          delete: vi.fn().mockReturnValue({ eq: vi.fn().mockReturnThis() }),
+          insert: vi.fn().mockResolvedValue({ error: null }),
+        };
+      }),
+    } as any);
+
+    const result = await calculateTaxAction(2026);
+
+    // Should still return a valid result (engine still runs for the response)
+    expect(result).not.toBeNull();
+    // But upsert on calculations should NOT have been called
+    expect(upsertFn).not.toHaveBeenCalled();
+  });
+
+  it("recalculates and writes when input_hash does NOT match (data changed)", async () => {
+    const upsertFn = vi.fn().mockReturnValue({
+      select: vi.fn().mockReturnThis(),
+      single: vi.fn().mockResolvedValue({ data: { id: "calc-new" }, error: null }),
+    });
+
+    vi.mocked(createSupabaseServerClient).mockResolvedValueOnce({
+      auth: { getUser: vi.fn().mockResolvedValue({ data: { user: { id: "u1" } } }) },
+      from: vi.fn((table: string) => {
+        if (table === "tax_profiles") {
+          return {
+            select: vi.fn().mockReturnValue({
+              eq: vi.fn().mockReturnThis(),
+              is: vi.fn().mockReturnThis(),
+              maybeSingle: vi.fn().mockResolvedValue({ data: VALID_PROFILE }),
+            }),
+          };
+        }
+        if (table === "income_events") {
+          return {
+            select: vi.fn().mockReturnValue({
+              eq: vi.fn().mockReturnValue({
+                eq: vi.fn().mockResolvedValue({ data: VALID_EVENTS }),
+              }),
+            }),
+          };
+        }
+        if (table === "calculations") {
+          return {
+            select: vi.fn().mockReturnValue({
+              eq: vi.fn().mockReturnValue({
+                eq: vi.fn().mockReturnValue({
+                  maybeSingle: vi.fn().mockResolvedValue({
+                    data: { id: "calc-old", input_hash: "stale-hash-does-not-match" },
+                  }),
+                }),
+              }),
+            }),
+            upsert: upsertFn,
+          };
+        }
+        return {
+          delete: vi.fn().mockReturnValue({ eq: vi.fn().mockReturnThis() }),
+          insert: vi.fn().mockResolvedValue({ error: null }),
+        };
+      }),
+    } as any);
+
+    const result = await calculateTaxAction(2026);
+
+    expect(result).not.toBeNull();
+    // Hash mismatch → upsert should have been called
+    expect(upsertFn).toHaveBeenCalled();
   });
 });

@@ -162,7 +162,7 @@ export default async function DashboardPage() {
                     : ce.event.grossAmountCents,
                 source: ce.event.source,
                 sourceCountry: ce.event.sourceCountry,
-                description: null, // EngineIncomeEvent doesn't carry description
+                description: ce.event.description ?? null,
                 treatment: ce.treatment,
                 taxCents: ce.taxCents,
               })

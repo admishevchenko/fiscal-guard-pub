@@ -13,6 +13,8 @@ export interface EngineIncomeEvent {
   category: IncomeCategory;
   /** Gross income in EUR integer cents */
   grossAmountCents: number;
+  /** Human-readable description of the income event (optional, pass-through for UI display) */
+  description?: string | null | undefined;
   /** ISO 8601 UTC timestamp of receipt — used for point-in-time blacklist check */
   receivedAt: string;
   /** CNAEF profession code; required for Cat A/B eligibility classification */

@@ -45,7 +45,7 @@ Legal foundation: **Portaria n.º 352/2024** (in force for 2026 tax year).
 - All monetary values stored and computed as **integer cents** (never floats).However, tax rate calculations and intermediate coefficients must use Decimal.js with 8-decimal precision to prevent rounding errors before final cent conversion
 - All dates stored as **ISO 8601 strings** in UTC.
 - Tax logic lives exclusively in `packages/tax-engine` — never inline in UI components.
-
+- All code changes are reviewed by anvil/anvil agent for tax logic, schema design, and security-sensitive code. Models used by anvil are gpt-5.4 and gemini-3-pro-preview, with a temperature of 0.2 for deterministic feedback.
 ### Database
 - Every table **must** have RLS enabled (`ALTER TABLE … ENABLE ROW LEVEL SECURITY`).
 - RLS policy pattern: `auth.uid() = user_id` for all CRUD operations.

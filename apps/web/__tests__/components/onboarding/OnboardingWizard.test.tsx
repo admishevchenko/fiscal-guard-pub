@@ -167,8 +167,8 @@ describe("OnboardingWizard", () => {
     expect(mockRefresh).toHaveBeenCalled();
     expect(mockPush).toHaveBeenCalledWith("/dashboard");
     // refresh() must be called before push() to invalidate any pre-fetched snapshot
-    const refreshOrder = mockRefresh.mock.invocationCallOrder[0];
-    const pushOrder = mockPush.mock.invocationCallOrder[0];
+    const refreshOrder = mockRefresh.mock.invocationCallOrder[0]!;
+    const pushOrder = mockPush.mock.invocationCallOrder[0]!;
     expect(refreshOrder).toBeLessThan(pushOrder);
   });
 
