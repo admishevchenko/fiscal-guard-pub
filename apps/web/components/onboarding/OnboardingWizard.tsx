@@ -70,6 +70,9 @@ export function OnboardingWizard() {
           regime: profile.regime,
           regimeEntryDate: profile.regimeEntryDate,
           professionCode: profile.professionCode,
+          ...(profile.nhrPensionExemptionElected !== undefined
+            ? { nhrPensionExemptionElected: profile.nhrPensionExemptionElected }
+            : {}),
         });
 
         if (profileResult.error) {
@@ -112,6 +115,9 @@ export function OnboardingWizard() {
     regimeEntryDate: profileData.regimeEntryDate ?? "",
     ...(profileData.regime !== undefined
       ? { regime: profileData.regime }
+      : {}),
+    ...(profileData.nhrPensionExemptionElected !== undefined
+      ? { nhrPensionExemptionElected: profileData.nhrPensionExemptionElected }
       : {}),
   };
 

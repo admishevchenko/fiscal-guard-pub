@@ -129,8 +129,7 @@ describe("calculateTaxAction", () => {
                 }),
               }),
             }),
-            delete: vi.fn().mockReturnValue({ eq: vi.fn().mockReturnThis() }),
-            insert: vi.fn().mockReturnValue({
+            upsert: vi.fn().mockReturnValue({
               select: vi.fn().mockReturnThis(),
               single: vi.fn().mockResolvedValue({
                 data: { id: "calc-1" },
@@ -220,7 +219,6 @@ describe("calculateTaxAction", () => {
   });
 
   it("returns CalculationResult for NHR + PT Cat A eligible profession (flat20 = 20% of gross)", async () => {
-    const deleteEq = vi.fn().mockReturnThis();
     vi.mocked(createSupabaseServerClient).mockResolvedValueOnce({
       auth: { getUser: vi.fn().mockResolvedValue({ data: { user: { id: "u1" } } }) },
       from: vi.fn((table: string) => {
@@ -251,8 +249,7 @@ describe("calculateTaxAction", () => {
                 }),
               }),
             }),
-            delete: vi.fn().mockReturnValue({ eq: vi.fn().mockReturnThis() }),
-            insert: vi.fn().mockReturnValue({
+            upsert: vi.fn().mockReturnValue({
               select: vi.fn().mockReturnThis(),
               single: vi.fn().mockResolvedValue({ data: { id: "calc-1" }, error: null }),
             }),
@@ -274,9 +271,8 @@ describe("calculateTaxAction", () => {
     expect(result!.regime).toBe("NHR");
   });
 
-  it("deletes existing calculation for the year before inserting", async () => {
-    const deleteFn = vi.fn().mockReturnValue({ eq: vi.fn().mockReturnThis() });
-    const insertFn = vi.fn().mockReturnValue({
+  it("upserts calculation row atomically (no delete+insert race)", async () => {
+    const upsertFn = vi.fn().mockReturnValue({
       select: vi.fn().mockReturnThis(),
       single: vi.fn().mockResolvedValue({ data: { id: "calc-1" }, error: null }),
     });
@@ -311,8 +307,7 @@ describe("calculateTaxAction", () => {
                 }),
               }),
             }),
-            delete: deleteFn,
-            insert: insertFn,
+            upsert: upsertFn,
           };
         }
         return {
@@ -324,8 +319,7 @@ describe("calculateTaxAction", () => {
 
     await calculateTaxAction(2026);
 
-    expect(deleteFn).toHaveBeenCalled();
-    expect(insertFn).toHaveBeenCalled();
+    expect(upsertFn).toHaveBeenCalled();
   });
 
   it("inserts reasoning log rows after successful calculation", async () => {
@@ -361,8 +355,7 @@ describe("calculateTaxAction", () => {
                 }),
               }),
             }),
-            delete: vi.fn().mockReturnValue({ eq: vi.fn().mockReturnThis() }),
-            insert: vi.fn().mockReturnValue({
+            upsert: vi.fn().mockReturnValue({
               select: vi.fn().mockReturnThis(),
               single: vi.fn().mockResolvedValue({ data: { id: "calc-99" }, error: null }),
             }),
@@ -446,8 +439,7 @@ describe("calculateTaxAction", () => {
                 }),
               }),
             }),
-            delete: vi.fn().mockReturnValue({ eq: vi.fn().mockReturnThis() }),
-            insert: vi.fn().mockReturnValue({
+            upsert: vi.fn().mockReturnValue({
               select: vi.fn().mockReturnThis(),
               single: vi.fn().mockResolvedValue({ data: { id: "calc-g" }, error: null }),
             }),
@@ -823,9 +815,8 @@ describe("calculateTaxAction", () => {
   // ===================================================================
 
   it("skips DB writes when input_hash matches existing calculation", async () => {
-    // We need to intercept the delete/insert calls to verify they are NOT called.
-    const deleteFn = vi.fn().mockReturnValue({ eq: vi.fn().mockReturnThis() });
-    const insertFn = vi.fn().mockReturnValue({
+    // We need to intercept the upsert calls to verify they are NOT called.
+    const upsertFn = vi.fn().mockReturnValue({
       select: vi.fn().mockReturnThis(),
       single: vi.fn().mockResolvedValue({ data: { id: "calc-1" }, error: null }),
     });
@@ -887,8 +878,7 @@ describe("calculateTaxAction", () => {
                 }),
               }),
             }),
-            delete: deleteFn,
-            insert: insertFn,
+            upsert: upsertFn,
           };
         }
         return {
@@ -902,14 +892,12 @@ describe("calculateTaxAction", () => {
 
     // Should still return a valid result (engine still runs for the response)
     expect(result).not.toBeNull();
-    // But delete and insert on calculations should NOT have been called
-    expect(deleteFn).not.toHaveBeenCalled();
-    expect(insertFn).not.toHaveBeenCalled();
+    // But upsert on calculations should NOT have been called
+    expect(upsertFn).not.toHaveBeenCalled();
   });
 
   it("recalculates and writes when input_hash does NOT match (data changed)", async () => {
-    const deleteFn = vi.fn().mockReturnValue({ eq: vi.fn().mockReturnThis() });
-    const insertFn = vi.fn().mockReturnValue({
+    const upsertFn = vi.fn().mockReturnValue({
       select: vi.fn().mockReturnThis(),
       single: vi.fn().mockResolvedValue({ data: { id: "calc-new" }, error: null }),
     });
@@ -946,8 +934,7 @@ describe("calculateTaxAction", () => {
                 }),
               }),
             }),
-            delete: deleteFn,
-            insert: insertFn,
+            upsert: upsertFn,
           };
         }
         return {
@@ -960,8 +947,7 @@ describe("calculateTaxAction", () => {
     const result = await calculateTaxAction(2026);
 
     expect(result).not.toBeNull();
-    // Hash mismatch → delete old + insert new should have been called
-    expect(deleteFn).toHaveBeenCalled();
-    expect(insertFn).toHaveBeenCalled();
+    // Hash mismatch → upsert should have been called
+    expect(upsertFn).toHaveBeenCalled();
   });
 });

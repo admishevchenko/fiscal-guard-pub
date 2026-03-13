@@ -191,37 +191,35 @@ export async function calculateTaxAction(
     return result;
   }
 
-  // ── 6. Replace calculation row + clear stale reasoning log ──────────────
-  // Delete previous calc and reasoning rows atomically before inserting fresh
-  // ones. This prevents data bloat from repeated renders.
+  // ── 6. Upsert calculation row + clear stale reasoning log ────────────────
+  // Delete previous reasoning rows before inserting fresh ones.
   await supabase
     .from("tax_reasoning_log")
     .delete()
     .eq("user_id", user.id)
     .eq("tax_year", taxYear);
 
-  await supabase
-    .from("calculations")
-    .delete()
-    .eq("user_id", user.id)
-    .eq("tax_year", taxYear);
-
+  // Atomic upsert on (user_id, tax_year) unique constraint — prevents
+  // duplicate rows from concurrent requests (TOCTOU race condition).
   const { data: calcRow, error: calcError } = await supabase
     .from("calculations")
-    .insert({
-      user_id: user.id,
-      tax_profile_id: taxProfile.id,
-      tax_year: taxYear,
-      input_hash: inputHash,
-      pt_taxable_income_cents: result.flat20IncomeCents,
-      foreign_exempt_income_cents: result.dtaExemptIncomeCents,
-      blacklisted_jurisdiction_income_cents: result.blacklist35IncomeCents,
-      flat_rate_tax_cents: result.flat20TaxCents,
-      progressive_tax_cents: result.progressiveTaxCents,
-      total_tax_cents: result.totalTaxCents,
-      effective_rate: result.effectiveRate,
-      calculation_metadata: result.metadata,
-    })
+    .upsert(
+      {
+        user_id: user.id,
+        tax_profile_id: taxProfile.id,
+        tax_year: taxYear,
+        input_hash: inputHash,
+        pt_taxable_income_cents: result.flat20IncomeCents,
+        foreign_exempt_income_cents: result.dtaExemptIncomeCents,
+        blacklisted_jurisdiction_income_cents: result.blacklist35IncomeCents,
+        flat_rate_tax_cents: result.flat20TaxCents,
+        progressive_tax_cents: result.progressiveTaxCents,
+        total_tax_cents: result.totalTaxCents,
+        effective_rate: result.effectiveRate,
+        calculation_metadata: result.metadata,
+      },
+      { onConflict: "user_id,tax_year" }
+    )
     .select("id")
     .single();
 
