@@ -185,4 +185,42 @@ describe("OnboardingWizard", () => {
     expect(mockRefresh).toHaveBeenCalled();
     expect(mockPush).toHaveBeenCalledWith("/dashboard");
   });
+
+  it("shows error toast and does NOT navigate when saveTaxProfile fails", async () => {
+    const user = userEvent.setup();
+    const { saveTaxProfile } = await import("@/actions/profile");
+    const { toast } = await import("sonner");
+    vi.mocked(saveTaxProfile).mockResolvedValueOnce({ error: "DB write failed" });
+
+    render(<OnboardingWizard />);
+    await completeStep1(user);
+    await completeStep2(user);
+
+    const amountInput = await screen.findByLabelText(/amount/i);
+    await user.clear(amountInput);
+    await user.type(amountInput, "50000");
+    await user.click(screen.getByRole("button", { name: /finish setup/i }));
+
+    expect(toast.error).toHaveBeenCalled();
+    expect(mockPush).not.toHaveBeenCalled();
+  });
+
+  it("shows error toast and does NOT navigate when saveIncomeEvents fails", async () => {
+    const user = userEvent.setup();
+    const { saveIncomeEvents } = await import("@/actions/profile");
+    const { toast } = await import("sonner");
+    vi.mocked(saveIncomeEvents).mockResolvedValueOnce({ error: "Insert failed" });
+
+    render(<OnboardingWizard />);
+    await completeStep1(user);
+    await completeStep2(user);
+
+    const amountInput = await screen.findByLabelText(/amount/i);
+    await user.clear(amountInput);
+    await user.type(amountInput, "50000");
+    await user.click(screen.getByRole("button", { name: /finish setup/i }));
+
+    expect(toast.error).toHaveBeenCalled();
+    expect(mockPush).not.toHaveBeenCalled();
+  });
 });
