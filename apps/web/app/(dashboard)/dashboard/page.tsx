@@ -6,6 +6,7 @@ import { RegimeComparisonChart } from "@/components/dashboard/RegimeComparisonCh
 import { IncomeBreakdownChart } from "@/components/dashboard/IncomeBreakdownChart";
 import { IncomeEventsPanel } from "@/components/dashboard/IncomeEventsPanel";
 import type { IncomeEventRow } from "@/components/dashboard/IncomeEventsPanel";
+import { TaxYearSelector } from "@/components/dashboard/TaxYearSelector";
 import { buttonVariants } from "@/components/ui/button-variants";
 import { Card, CardContent } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
@@ -16,10 +17,20 @@ import type { CalculationResult } from "@fiscal-guard/tax-engine";
 // Page
 // ---------------------------------------------------------------------------
 
-export default async function DashboardPage() {
+export default async function DashboardPage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
+  const params = await searchParams;
   const currentYear = new Date().getFullYear();
+  const requestedYear = typeof params["year"] === "string" ? parseInt(params["year"], 10) : NaN;
   const taxYear =
-    currentYear >= 2024 ? Math.min(currentYear, 2030) : 2024;
+    !isNaN(requestedYear) && requestedYear >= 2024 && requestedYear <= 2030
+      ? requestedYear
+      : currentYear >= 2024
+        ? Math.min(currentYear, 2030)
+        : 2024;
 
   // Fetch profession code for eligibility banner
   const taxProfile = await getTaxProfile();
@@ -40,14 +51,17 @@ export default async function DashboardPage() {
   return (
     <div className="space-y-8">
       {/* Page header */}
-      <div>
-        <h1 className="text-2xl font-bold text-gray-900">Dashboard</h1>
-        <p className="mt-1 text-sm text-gray-500">
-          Tax year {taxYear} · Regime: {taxProfile?.regime ?? "—"} · Code:{" "}
-          <span className={codeIsEligible ? "text-green-600 font-medium" : "text-red-600 font-medium"}>
-            {professionCode || "not set"}
-          </span>
-        </p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">Dashboard</h1>
+          <p className="mt-1 text-sm text-gray-500">
+            Tax year {taxYear} · Regime: {taxProfile?.regime ?? "—"} · Code:{" "}
+            <span className={codeIsEligible ? "text-green-600 font-medium" : "text-red-600 font-medium"}>
+              {professionCode || "not set"}
+            </span>
+          </p>
+        </div>
+        <TaxYearSelector currentYear={taxYear} />
       </div>
 
       {/* Profession code eligibility banner */}
