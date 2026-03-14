@@ -17,6 +17,7 @@ import {
   ELIGIBLE_PROFESSION_CODES,
   SUSPECT_PROFESSION_CODES,
 } from "@fiscal-guard/tax-engine";
+import { useState } from "react";
 
 
 // Human-readable labels for the most common eligible codes
@@ -46,6 +47,10 @@ export function Step2Profession({
   onNext,
   onBack,
 }: Step2ProfessionProps) {
+  const [noProfessionCode, setNoProfessionCode] = useState(
+    defaultValues?.professionCode === "0000"
+  );
+
   const form = useForm<Step2Data, unknown, Step2Data>({
     resolver: zodResolver(Step2Schema),
     defaultValues: {
@@ -59,88 +64,124 @@ export function Step2Profession({
   const isSuspect = isComplete && SUSPECT_PROFESSION_CODES.has(code);
   const isUnknown = isComplete && !isEligible && !isSuspect;
 
+  function handleNoProfessionToggle(checked: boolean) {
+    setNoProfessionCode(checked);
+    if (checked) {
+      form.setValue("professionCode", "0000", { shouldValidate: true });
+    } else {
+      form.setValue("professionCode", "", { shouldValidate: true });
+    }
+  }
+
   return (
     <Form {...form}>
       <form onSubmit={form.handleSubmit(onNext)} className="space-y-6">
-        <FormField
-          control={form.control}
-          name="professionCode"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>Profession code (CPP 2010)</FormLabel>
-              <FormControl>
-                <Input
-                  placeholder="e.g. 2131"
-                  maxLength={4}
-                  inputMode="numeric"
-                  pattern="\d{4}"
-                  {...field}
-                />
-              </FormControl>
+        {/* No profession code checkbox */}
+        <label className="flex items-center gap-2 cursor-pointer text-sm">
+          <input
+            type="checkbox"
+            checked={noProfessionCode}
+            onChange={(e) => handleNoProfessionToggle(e.target.checked)}
+            className="h-4 w-4 rounded border-gray-300"
+          />
+          <span>
+            I don&apos;t have a profession code{" "}
+            <span className="text-muted-foreground">
+              (pensioner, investor, or non-employed income only)
+            </span>
+          </span>
+        </label>
 
-              {/* Real-time eligibility badge */}
-              {isComplete && (
-                <div
-                  className={
-                    isEligible
-                      ? "rounded-md border border-green-200 bg-green-50 dark:border-green-800 dark:bg-green-950/30 px-3 py-2 text-xs text-green-800 dark:text-green-300"
-                      : isSuspect
-                        ? "rounded-md border border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/30 px-3 py-2 text-xs text-amber-800 dark:text-amber-300"
-                        : "rounded-md border border-red-200 bg-red-50 dark:border-red-800 dark:bg-red-950/30 px-3 py-2 text-xs text-red-800 dark:text-red-300"
-                  }
-                >
-                  {isEligible && (
-                    <>✅ <strong>Eligible</strong> — qualifies for the 20% NHR/IFICI flat rate on Portuguese-source income (Portaria n.º 352/2024 Annex).</>
-                  )}
-                  {isSuspect && (
-                    <>⚠️ <strong>Pending manual review</strong> — this code&apos;s eligibility is ambiguous under Portaria n.º 352/2024. A conservative progressive rate will apply until a compliance officer clears the flag.</>
-                  )}
-                  {isUnknown && (
-                    <>❌ <strong>Not recognised</strong> — this code is not in the Portaria n.º 352/2024 eligible list. Portuguese-source income will be taxed at the <strong>progressive rate</strong> (12.5%–48%), not the 20% flat rate. Check the reference table below.</>
-                  )}
-                </div>
-              )}
-
-              <p className="text-xs text-muted-foreground">
-                Use your <strong>CPP 2010</strong> code (Classificação Portuguesa
-                das Profissões) from the Annex to Portaria n.º 352/2024 — not
-                your CAE/CNAEF economic activity code.
-              </p>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
-
-        {/* Quick-reference table */}
-        <details className="group text-xs">
-          <summary className="cursor-pointer text-muted-foreground hover:text-foreground select-none">
-            📋 Common eligible codes (Portaria n.º 352/2024 Annex)
-          </summary>
-          <div className="mt-2 rounded-md border divide-y text-xs overflow-hidden">
-            {COMMON_CODES.map(({ code: c, label }) => (
-              <button
-                key={c}
-                type="button"
-                onClick={() => form.setValue("professionCode", c, { shouldValidate: true })}
-                className="w-full text-left px-3 py-1.5 hover:bg-muted/50 transition-colors font-mono"
-              >
-                {label}
-              </button>
-            ))}
+        {noProfessionCode ? (
+          <div className="rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-800">
+            ℹ️ Without an eligible profession code, all Portuguese-source income
+            (Cat A/B) will be taxed at <strong>progressive rates (12.5%–48%)</strong>{" "}
+            instead of the 20% flat rate. Foreign income may still qualify for
+            DTA exemption under your NHR/IFICI regime.
           </div>
-          <p className="mt-1 text-muted-foreground">
-            Click a code to auto-fill. Full list in the{" "}
-            <a
-              href="https://dre.pt/dre/detalhe/portaria/352-2024-868920958"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="underline hover:text-foreground"
-            >
-              official Portaria text ↗
-            </a>
-            .
-          </p>
-        </details>
+        ) : (
+          <>
+            <FormField
+              control={form.control}
+              name="professionCode"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Profession code (CPP 2010)</FormLabel>
+                  <FormControl>
+                    <Input
+                      placeholder="e.g. 2131"
+                      maxLength={4}
+                      inputMode="numeric"
+                      pattern="\d{4}"
+                      {...field}
+                    />
+                  </FormControl>
+
+                  {/* Real-time eligibility badge */}
+                  {isComplete && (
+                    <div
+                      className={
+                        isEligible
+                          ? "rounded-md border border-green-200 bg-green-50 dark:border-green-800 dark:bg-green-950/30 px-3 py-2 text-xs text-green-800 dark:text-green-300"
+                          : isSuspect
+                            ? "rounded-md border border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/30 px-3 py-2 text-xs text-amber-800 dark:text-amber-300"
+                            : "rounded-md border border-red-200 bg-red-50 dark:border-red-800 dark:bg-red-950/30 px-3 py-2 text-xs text-red-800 dark:text-red-300"
+                      }
+                    >
+                      {isEligible && (
+                        <>✅ <strong>Eligible</strong> — qualifies for the 20% NHR/IFICI flat rate on Portuguese-source income (Portaria n.º 352/2024 Annex).</>
+                      )}
+                      {isSuspect && (
+                        <>⚠️ <strong>Pending manual review</strong> — this code&apos;s eligibility is ambiguous under Portaria n.º 352/2024. A conservative progressive rate will apply until a compliance officer clears the flag.</>
+                      )}
+                      {isUnknown && (
+                        <>❌ <strong>Not recognised</strong> — this code is not in the Portaria n.º 352/2024 eligible list. Portuguese-source income will be taxed at the <strong>progressive rate</strong> (12.5%–48%), not the 20% flat rate. Check the reference table below.</>
+                      )}
+                    </div>
+                  )}
+
+                  <p className="text-xs text-muted-foreground">
+                    Use your <strong>CPP 2010</strong> code (Classificação Portuguesa
+                    das Profissões) from the Annex to Portaria n.º 352/2024 — not
+                    your CAE/CNAEF economic activity code.
+                  </p>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            {/* Quick-reference table */}
+            <details className="group text-xs">
+              <summary className="cursor-pointer text-muted-foreground hover:text-foreground select-none">
+                📋 Common eligible codes (Portaria n.º 352/2024 Annex)
+              </summary>
+              <div className="mt-2 rounded-md border divide-y text-xs overflow-hidden">
+                {COMMON_CODES.map(({ code: c, label }) => (
+                  <button
+                    key={c}
+                    type="button"
+                    onClick={() => form.setValue("professionCode", c, { shouldValidate: true })}
+                    className="w-full text-left px-3 py-1.5 hover:bg-muted/50 transition-colors font-mono"
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+              <p className="mt-1 text-muted-foreground">
+                Click a code to auto-fill. Full list in the{" "}
+                <a
+                  href="https://dre.pt/dre/detalhe/portaria/352-2024-868920958"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="underline hover:text-foreground"
+                >
+                  official Portaria text ↗
+                </a>
+                .
+              </p>
+            </details>
+          </>
+        )}
 
         <div className="flex justify-between">
           <Button type="button" variant="outline" onClick={onBack}>

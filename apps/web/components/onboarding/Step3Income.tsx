@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect } from "react";
 import { useFieldArray, useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -54,7 +55,7 @@ const DEFAULT_EVENT: IncomeEventFormData = {
 
 interface Step3IncomeProps {
   onSubmit: (events: IncomeEventFormData[]) => void;
-  onBack: () => void;
+  onBack?: (() => void) | undefined;
   isSubmitting?: boolean;
 }
 
@@ -105,11 +106,15 @@ export function Step3Income({ onSubmit, onBack, isSubmitting }: Step3IncomeProps
         <Separator />
 
         <div className="flex justify-between">
-          <Button type="button" variant="outline" onClick={onBack}>
-            ← Back
-          </Button>
+          {onBack ? (
+            <Button type="button" variant="outline" onClick={onBack}>
+              ← Back
+            </Button>
+          ) : (
+            <div />
+          )}
           <Button type="submit" disabled={isSubmitting}>
-            {isSubmitting ? "Saving…" : "Finish setup →"}
+            {isSubmitting ? "Saving…" : onBack ? "Finish setup →" : "Save income →"}
           </Button>
         </div>
       </form>
@@ -142,6 +147,15 @@ function IncomeEventRow({ index, form, onRemove }: IncomeEventRowProps) {
   // Art. 81 CIRS: source follows where the activity is performed, not where
   // the client is based. Remote work from Portugal → PT-source → 20% flat rate.
   const showRemoteWorkWarning = source === "FOREIGN" && category === "B";
+
+  // Clear stale Cat B coefficient when source switches away from DOMESTIC or
+  // category changes away from B (Art. 31 CIRS only applies to domestic Cat B).
+  const showCatBCoefficient = category === "B" && source === "DOMESTIC";
+  useEffect(() => {
+    if (!showCatBCoefficient) {
+      form.setValue(`events.${index}.catBActivityYear`, undefined);
+    }
+  }, [showCatBCoefficient, form, index]);
 
   return (
     <div className="rounded-lg border p-4 space-y-4">
@@ -278,8 +292,8 @@ function IncomeEventRow({ index, form, onRemove }: IncomeEventRowProps) {
         )}
       />
 
-      {/* Regime simplificado activity year — only for Cat B */}
-      {category === "B" && (
+      {/* Regime simplificado activity year — only for domestic Cat B (Art. 31 CIRS) */}
+      {showCatBCoefficient && (
         <FormField
           control={form.control}
           name={`events.${index}.catBActivityYear`}

@@ -198,7 +198,7 @@ export default async function DashboardPage({
                 IFICI tax liability.
               </p>
             </div>
-            <Link href="/onboarding" className={buttonVariants()}>Add income events</Link>
+            <Link href="/onboarding?step=income" className={buttonVariants()}>Add income events</Link>
           </CardContent>
         </Card>
       )}

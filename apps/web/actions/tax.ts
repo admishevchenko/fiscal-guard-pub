@@ -150,11 +150,16 @@ export async function calculateTaxAction(
     .maybeSingle();
 
   // ── 4. Map DB rows → EngineIncomeEvent ──────────────────────────────────
+  // "0000" is the sentinel for "no profession code" — convert to undefined
+  // so the engine treats it as no high-value activity (progressive rates).
+  const professionCode =
+    taxProfile.profession_code === "0000" ? undefined : taxProfile.profession_code;
+
   const engineProfile: EngineTaxProfile = {
     regime: taxProfile.regime,
     regimeEntryDate: taxProfile.regime_entry_date,
     regimeExitDate: taxProfile.regime_exit_date,
-    professionCode: taxProfile.profession_code,
+    professionCode,
     isInnovationActivity: taxProfile.is_innovation_activity,
     // Lei n.º 2/2020, Art. 12: pre-2020 NHR holders who elected pension exemption
     nhrPensionExemptionElected: taxProfile.nhr_pension_exemption_elected,
@@ -173,7 +178,7 @@ export async function calculateTaxAction(
     sourceCountry: evt.source_country,
     description: evt.description,
     receivedAt,
-    professionCode: taxProfile.profession_code,
+    professionCode,
     // Art. 31 CIRS: pass the stored regime simplificado coefficient to the engine.
     // The engine uses this to reduce the taxable base for Cat B income.
     catBCoefficient: evt.cat_b_coefficient ?? undefined,

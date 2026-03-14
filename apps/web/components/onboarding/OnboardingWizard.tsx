@@ -1,9 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { Progress } from "@/components/ui/progress";
+import { Badge } from "@/components/ui/badge";
 import { saveTaxProfile, saveIncomeEvents } from "@/actions/profile";
 import { Step1Regime } from "./Step1Regime";
 import { Step2Profession } from "./Step2Profession";
@@ -13,18 +14,34 @@ import type { IncomeEventFormData } from "@/lib/validations/incomeEvent";
 
 type WizardProfileData = Step1Data & Step2Data;
 
+/** Minimal profile data passed from server when user already has a profile. */
+export interface ExistingProfile {
+  regime: "NHR" | "IFICI";
+  regimeEntryDate: string;
+  professionCode: string;
+}
+
 const STEP_LABELS = [
   "Regime & dates",
   "Profession code",
   "Income events",
 ] as const;
 
-export function OnboardingWizard() {
+interface OnboardingWizardProps {
+  existingProfile?: ExistingProfile | undefined;
+}
+
+export function OnboardingWizard({ existingProfile }: OnboardingWizardProps) {
   const router = useRouter();
-  const searchParams = useSearchParams();
-  // ?step=income lets returning users jump straight to Step 3
-  const initialStep = searchParams.get("step") === "income" ? 2 : 0;
-  const [step, setStep] = useState<0 | 1 | 2>(initialStep as 0 | 1 | 2);
+
+  // If the user already has a profile, always jump to income step.
+  // Profile editing should be done separately, not during income add.
+  // IMPORTANT: Only honor ?step=income when existingProfile is present to
+  // prevent orphan income events being created without a tax profile.
+  const hasProfile = existingProfile !== undefined;
+  const initialStep: 0 | 1 | 2 = hasProfile ? 2 : 0;
+
+  const [step, setStep] = useState<0 | 1 | 2>(initialStep);
   const [profileData, setProfileData] = useState<Partial<WizardProfileData>>(
     {}
   );
@@ -45,10 +62,10 @@ export function OnboardingWizard() {
   }
 
   async function handleStep3Submit(events: IncomeEventFormData[]) {
-    const isAddIncomeOnly = initialStep === 2;
+    const isAddIncomeOnly = hasProfile;
     const profile = profileData as WizardProfileData;
 
-    // When arriving via ?step=income, the user already has a profile — skip save.
+    // When adding income only, the user already has a profile — skip save.
     if (!isAddIncomeOnly) {
       if (
         !profile.displayName ||
@@ -123,6 +140,23 @@ export function OnboardingWizard() {
 
   return (
     <div className="space-y-6">
+      {/* Existing profile banner — shown when adding income to an existing profile */}
+      {hasProfile && (
+        <div className="flex items-center gap-3 rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm">
+          <span className="text-blue-600 font-medium">Active profile:</span>
+          <Badge variant="outline">{existingProfile.regime}</Badge>
+          <span className="text-muted-foreground">
+            since {existingProfile.regimeEntryDate}
+          </span>
+          <span className="text-muted-foreground">·</span>
+          <span className="text-muted-foreground">
+            {existingProfile.professionCode === "0000"
+              ? "No profession code"
+              : `Code: ${existingProfile.professionCode}`}
+          </span>
+        </div>
+      )}
+
       {/* Progress header */}
       <div className="space-y-2">
         <div className="flex items-center justify-between text-sm text-muted-foreground">
@@ -156,7 +190,7 @@ export function OnboardingWizard() {
       {step === 2 && (
         <Step3Income
           onSubmit={handleStep3Submit}
-          onBack={() => setStep(1)}
+          onBack={hasProfile ? undefined : () => setStep(1)}
           isSubmitting={isSubmitting}
         />
       )}
