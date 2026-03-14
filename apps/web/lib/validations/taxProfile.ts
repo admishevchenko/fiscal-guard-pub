@@ -21,7 +21,8 @@ export const OnboardingSchema = z.object({
 
   professionCode: z
     .string()
-    .regex(/^\d{4}$/, "Profession code must be exactly 4 digits"),
+    .regex(/^\d{4}$/, "Profession code must be exactly 4 digits")
+    .or(z.literal("0000")),
 
   /**
    * Lei n.º 2/2020 (OE 2020), Art. 12 transitional provision:

@@ -6,6 +6,11 @@ import { Step2Profession } from "@/components/onboarding/Step2Profession";
 // Step2Profession depends on ELIGIBLE_PROFESSION_CODES and SUSPECT_PROFESSION_CODES
 // from @fiscal-guard/tax-engine (real data, no mock needed).
 
+/** Helper: get the profession code <input> (excludes the "no code" checkbox). */
+function getProfessionInput() {
+  return screen.getByPlaceholderText("e.g. 2131");
+}
+
 describe("Step2Profession", () => {
   const defaultProps = {
     onNext: vi.fn(),
@@ -14,7 +19,7 @@ describe("Step2Profession", () => {
 
   it("renders the profession code input and reference table summary", () => {
     render(<Step2Profession {...defaultProps} />);
-    expect(screen.getByLabelText(/profession code/i)).toBeInTheDocument();
+    expect(getProfessionInput()).toBeInTheDocument();
     expect(screen.getByText(/common eligible codes/i)).toBeInTheDocument();
   });
 
@@ -22,8 +27,7 @@ describe("Step2Profession", () => {
     const user = userEvent.setup();
     render(<Step2Profession {...defaultProps} />);
 
-    await user.type(screen.getByLabelText(/profession code/i), "2131");
-    // The eligible badge shows unique text about qualifying for the 20% flat rate
+    await user.type(getProfessionInput(), "2131");
     expect(
       await screen.findByText(/qualifies for the 20%/i)
     ).toBeInTheDocument();
@@ -33,9 +37,7 @@ describe("Step2Profession", () => {
     const user = userEvent.setup();
     render(<Step2Profession {...defaultProps} />);
 
-    // 2433 is in SUSPECT_PROFESSION_CODES (financial analyst — ambiguous eligibility)
-    await user.type(screen.getByLabelText(/profession code/i), "2433");
-    // The suspect badge contains this unique phrase
+    await user.type(getProfessionInput(), "2433");
     expect(
       await screen.findByText(/conservative progressive rate/i)
     ).toBeInTheDocument();
@@ -45,8 +47,7 @@ describe("Step2Profession", () => {
     const user = userEvent.setup();
     render(<Step2Profession {...defaultProps} />);
 
-    await user.type(screen.getByLabelText(/profession code/i), "0000");
-    // The unknown badge contains this unique phrase
+    await user.type(getProfessionInput(), "9999");
     expect(
       await screen.findByText(/not in the Portaria/i)
     ).toBeInTheDocument();
@@ -56,7 +57,6 @@ describe("Step2Profession", () => {
     const user = userEvent.setup();
     render(<Step2Profession {...defaultProps} />);
 
-    // Open the details element
     const summary = screen.getByText(/common eligible codes/i);
     await user.click(summary);
 
@@ -74,7 +74,7 @@ describe("Step2Profession", () => {
     const row2132 = screen.getByRole("button", { name: /2132/i });
     await user.click(row2132);
 
-    expect(screen.getByLabelText(/profession code/i)).toHaveValue("2132");
+    expect(getProfessionInput()).toHaveValue("2132");
   });
 
   it("calls onBack when the Back button is clicked", async () => {
@@ -91,17 +91,59 @@ describe("Step2Profession", () => {
     const onNext = vi.fn();
     render(<Step2Profession onNext={onNext} onBack={vi.fn()} />);
 
-    const input = screen.getByLabelText(/profession code/i);
+    const input = getProfessionInput();
     await user.type(input, "2131");
-    // Wait for state update — input must show the value before submitting
     await screen.findByDisplayValue("2131");
 
     await user.click(screen.getByRole("button", { name: /next/i }));
 
-    // react-hook-form passes (data, event) to the submit handler
     expect(onNext).toHaveBeenCalledWith(
       expect.objectContaining({ professionCode: "2131" }),
       expect.anything()
     );
+  });
+
+  it("sets profession code to 0000 when 'no profession code' checkbox is checked", async () => {
+    const user = userEvent.setup();
+    const onNext = vi.fn();
+    render(<Step2Profession onNext={onNext} onBack={vi.fn()} />);
+
+    const checkbox = screen.getByRole("checkbox");
+    await user.click(checkbox);
+
+    // Input should be hidden; info banner should appear
+    expect(screen.queryByPlaceholderText("e.g. 2131")).not.toBeInTheDocument();
+    expect(screen.getByText(/progressive rates/i)).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: /next/i }));
+
+    expect(onNext).toHaveBeenCalledWith(
+      expect.objectContaining({ professionCode: "0000" }),
+      expect.anything()
+    );
+  });
+
+  it("restores profession code input when 'no profession code' checkbox is unchecked", async () => {
+    const user = userEvent.setup();
+    render(<Step2Profession {...defaultProps} />);
+
+    const checkbox = screen.getByRole("checkbox");
+    await user.click(checkbox); // check
+    expect(screen.queryByPlaceholderText("e.g. 2131")).not.toBeInTheDocument();
+
+    await user.click(checkbox); // uncheck
+    expect(screen.getByPlaceholderText("e.g. 2131")).toBeInTheDocument();
+  });
+
+  it("pre-selects checkbox when defaultValues has profession code 0000", () => {
+    render(
+      <Step2Profession
+        {...defaultProps}
+        defaultValues={{ professionCode: "0000" }}
+      />
+    );
+
+    expect(screen.getByRole("checkbox")).toBeChecked();
+    expect(screen.queryByPlaceholderText("e.g. 2131")).not.toBeInTheDocument();
   });
 });

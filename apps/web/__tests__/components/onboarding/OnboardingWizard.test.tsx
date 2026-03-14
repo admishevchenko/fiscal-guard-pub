@@ -35,7 +35,7 @@ async function completeStep1(user: ReturnType<typeof userEvent.setup>) {
 }
 
 async function completeStep2(user: ReturnType<typeof userEvent.setup>) {
-  const input = screen.getByLabelText(/profession code/i);
+  const input = screen.getByPlaceholderText("e.g. 2131");
   await user.type(input, "2131");
   await screen.findByDisplayValue("2131");
   await user.click(screen.getByRole("button", { name: /next/i }));

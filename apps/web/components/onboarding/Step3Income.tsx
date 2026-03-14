@@ -54,7 +54,7 @@ const DEFAULT_EVENT: IncomeEventFormData = {
 
 interface Step3IncomeProps {
   onSubmit: (events: IncomeEventFormData[]) => void;
-  onBack: () => void;
+  onBack?: (() => void) | undefined;
   isSubmitting?: boolean;
 }
 
@@ -105,11 +105,15 @@ export function Step3Income({ onSubmit, onBack, isSubmitting }: Step3IncomeProps
         <Separator />
 
         <div className="flex justify-between">
-          <Button type="button" variant="outline" onClick={onBack}>
-            ← Back
-          </Button>
+          {onBack ? (
+            <Button type="button" variant="outline" onClick={onBack}>
+              ← Back
+            </Button>
+          ) : (
+            <div />
+          )}
           <Button type="submit" disabled={isSubmitting}>
-            {isSubmitting ? "Saving…" : "Finish setup →"}
+            {isSubmitting ? "Saving…" : onBack ? "Finish setup →" : "Save income →"}
           </Button>
         </div>
       </form>
@@ -278,8 +282,8 @@ function IncomeEventRow({ index, form, onRemove }: IncomeEventRowProps) {
         )}
       />
 
-      {/* Regime simplificado activity year — only for Cat B */}
-      {category === "B" && (
+      {/* Regime simplificado activity year — only for domestic Cat B (Art. 31 CIRS) */}
+      {category === "B" && source === "DOMESTIC" && (
         <FormField
           control={form.control}
           name={`events.${index}.catBActivityYear`}
