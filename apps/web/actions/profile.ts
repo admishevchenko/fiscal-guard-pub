@@ -208,11 +208,25 @@ export async function saveIncomeEvents(
 
   if (!user) return { error: "Not authenticated" };
 
+  // Server-side guard: require an active tax profile before allowing income events.
+  // Prevents orphan events that the tax calculation flow cannot use.
+  const { data: profile } = await supabase
+    .from("tax_profiles")
+    .select("id")
+    .eq("user_id", user.id)
+    .maybeSingle();
+
+  if (!profile) {
+    return { error: "Please set up your tax profile before adding income events." };
+  }
+
   const rows = events.map((evt) => {
-    // Art. 31 CIRS: only include cat_b_coefficient when there is an actual value
-    // to avoid a column-not-found error if the migration hasn't been applied yet.
+    // Art. 31 CIRS: only include cat_b_coefficient for domestic Cat B income.
+    // Foreign Cat B is DTA-exempt under NHR/IFICI — coefficient is irrelevant.
     const coeff =
-      evt.category === "B" ? catBCoefficientFromYear(evt.catBActivityYear) : null;
+      evt.category === "B" && evt.source === "DOMESTIC"
+        ? catBCoefficientFromYear(evt.catBActivityYear)
+        : null;
 
     return {
       user_id: user.id,

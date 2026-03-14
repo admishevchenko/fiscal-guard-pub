@@ -143,6 +143,12 @@ describe("saveIncomeEvents", () => {
     vi.clearAllMocks();
     mockInsert.mockResolvedValue({ error: null });
     mockGetUser.mockResolvedValue({ data: { user: { id: "user-abc" } } });
+    // Server-side guard: saveIncomeEvents now requires an active tax profile
+    mockSelect.mockReturnValue({
+      eq: vi.fn().mockReturnValue({
+        maybeSingle: vi.fn().mockResolvedValue({ data: { id: "profile-1" } }),
+      }),
+    });
   });
 
   it("returns empty object immediately for empty events array", async () => {
@@ -402,6 +408,36 @@ describe("saveIncomeEvents", () => {
     ]);
     const row = mockInsert.mock.calls[0]![0]![0]!;
     expect(row.gross_amount_cents).toBe(1);
+  });
+
+  it("returns error when user has no tax profile (server-side guard)", async () => {
+    // Override the mock to return no profile
+    mockSelect.mockReturnValue({
+      eq: vi.fn().mockReturnValue({
+        maybeSingle: vi.fn().mockResolvedValue({ data: null }),
+      }),
+    });
+
+    const result = await saveIncomeEvents([
+      { taxYear: 2026, category: "A", amountEuros: 50000, source: "DOMESTIC" },
+    ]);
+    expect(result.error).toMatch(/tax profile/i);
+    expect(mockInsert).not.toHaveBeenCalled();
+  });
+
+  it("does NOT include cat_b_coefficient for FOREIGN Cat B events (Art. 31 CIRS)", async () => {
+    await saveIncomeEvents([
+      {
+        taxYear: 2026,
+        category: "B",
+        amountEuros: 100000,
+        source: "FOREIGN",
+        sourceCountry: "DE",
+        catBActivityYear: 1,
+      },
+    ]);
+    const row = mockInsert.mock.calls[0]![0]![0]!;
+    expect(Object.keys(row)).not.toContain("cat_b_coefficient");
   });
 });
 

@@ -2,15 +2,14 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { OnboardingWizard } from "@/components/onboarding/OnboardingWizard";
+import type { ExistingProfile } from "@/components/onboarding/OnboardingWizard";
 
 // Mock next/navigation
 const mockPush = vi.fn();
 const mockRefresh = vi.fn();
-let mockSearchParams = new URLSearchParams();
 
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: mockPush, refresh: mockRefresh }),
-  useSearchParams: () => mockSearchParams,
 }));
 
 // Mock server actions
@@ -23,6 +22,12 @@ vi.mock("@/actions/profile", () => ({
 vi.mock("sonner", () => ({
   toast: { error: vi.fn(), success: vi.fn() },
 }));
+
+const TEST_PROFILE: ExistingProfile = {
+  regime: "NHR",
+  regimeEntryDate: "2022-01-01",
+  professionCode: "2131",
+};
 
 async function completeStep1(user: ReturnType<typeof userEvent.setup>) {
   await user.type(screen.getByLabelText(/your name/i), "Test User");
@@ -44,7 +49,6 @@ async function completeStep2(user: ReturnType<typeof userEvent.setup>) {
 describe("OnboardingWizard", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockSearchParams = new URLSearchParams();
   });
 
   it("renders Step 1 by default (Regime & dates label visible)", () => {
@@ -71,16 +75,6 @@ describe("OnboardingWizard", () => {
     await completeStep2(user);
 
     expect(await screen.findByText(/income events/i)).toBeInTheDocument();
-  });
-
-  it("starts at Step 3 when ?step=income is in searchParams", () => {
-    mockSearchParams = new URLSearchParams("step=income");
-    render(<OnboardingWizard />);
-
-    // Income events label shown and step 1 label not the current step
-    expect(screen.getByText(/income events/i)).toBeInTheDocument();
-    // The regime & dates step label should NOT appear as the active header
-    expect(screen.queryByLabelText(/your name/i)).not.toBeInTheDocument();
   });
 
   it("goes back to Step 1 from Step 2 when Back is clicked", async () => {
@@ -115,23 +109,6 @@ describe("OnboardingWizard", () => {
     await completeStep2(user);
 
     expect(await screen.findByText("100%")).toBeInTheDocument();
-  });
-
-  it("does NOT call saveTaxProfile when entering via ?step=income", async () => {
-    const user = userEvent.setup();
-    mockSearchParams = new URLSearchParams("step=income");
-    const { saveTaxProfile, saveIncomeEvents } = await import("@/actions/profile");
-
-    render(<OnboardingWizard />);
-
-    // Fill amount and submit
-    const amountInput = screen.getByLabelText(/amount/i);
-    await user.clear(amountInput);
-    await user.type(amountInput, "60000");
-    await user.click(screen.getByRole("button", { name: /finish setup/i }));
-
-    expect(saveTaxProfile).not.toHaveBeenCalled();
-    expect(saveIncomeEvents).toHaveBeenCalled();
   });
 
   it("calls both saveTaxProfile and saveIncomeEvents on full flow submit", async () => {
@@ -172,20 +149,6 @@ describe("OnboardingWizard", () => {
     expect(refreshOrder).toBeLessThan(pushOrder);
   });
 
-  it("calls router.refresh() on ?step=income add-income-only submit", async () => {
-    const user = userEvent.setup();
-    mockSearchParams = new URLSearchParams("step=income");
-    render(<OnboardingWizard />);
-
-    const amountInput = screen.getByLabelText(/amount/i);
-    await user.clear(amountInput);
-    await user.type(amountInput, "60000");
-    await user.click(screen.getByRole("button", { name: /finish setup/i }));
-
-    expect(mockRefresh).toHaveBeenCalled();
-    expect(mockPush).toHaveBeenCalledWith("/dashboard");
-  });
-
   it("shows error toast and does NOT navigate when saveTaxProfile fails", async () => {
     const user = userEvent.setup();
     const { saveTaxProfile } = await import("@/actions/profile");
@@ -222,5 +185,61 @@ describe("OnboardingWizard", () => {
 
     expect(toast.error).toHaveBeenCalled();
     expect(mockPush).not.toHaveBeenCalled();
+  });
+
+  // ---- existingProfile tests (income-only mode) ----------------------------
+
+  it("skips to Step 3 and shows profile banner when existingProfile is provided", () => {
+    render(<OnboardingWizard existingProfile={TEST_PROFILE} />);
+
+    // Should show income events step directly
+    expect(screen.getByText(/income events/i)).toBeInTheDocument();
+    // Should NOT show Step 1
+    expect(screen.queryByLabelText(/your name/i)).not.toBeInTheDocument();
+    // Should show the profile banner
+    expect(screen.getByText(/active profile/i)).toBeInTheDocument();
+    expect(screen.getByText("NHR")).toBeInTheDocument();
+    expect(screen.getByText(/Code: 2131/)).toBeInTheDocument();
+  });
+
+  it("shows 'No profession code' in banner when professionCode is 0000", () => {
+    render(
+      <OnboardingWizard
+        existingProfile={{ ...TEST_PROFILE, professionCode: "0000" }}
+      />
+    );
+
+    expect(screen.getByText(/no profession code/i)).toBeInTheDocument();
+    expect(screen.queryByText(/Code: 0000/)).not.toBeInTheDocument();
+  });
+
+  it("hides Back button on income step when existingProfile is set", () => {
+    render(<OnboardingWizard existingProfile={TEST_PROFILE} />);
+
+    expect(screen.queryByRole("button", { name: /back/i })).not.toBeInTheDocument();
+  });
+
+  it("does NOT call saveTaxProfile when existingProfile is provided", async () => {
+    const user = userEvent.setup();
+    const { saveTaxProfile, saveIncomeEvents } = await import("@/actions/profile");
+
+    render(<OnboardingWizard existingProfile={TEST_PROFILE} />);
+
+    const amountInput = screen.getByLabelText(/amount/i);
+    await user.clear(amountInput);
+    await user.type(amountInput, "60000");
+    await user.click(screen.getByRole("button", { name: /save income/i }));
+
+    expect(saveTaxProfile).not.toHaveBeenCalled();
+    expect(saveIncomeEvents).toHaveBeenCalled();
+  });
+
+  it("does NOT skip to Step 3 without existingProfile even if URL has ?step=income", () => {
+    // ?step=income is no longer honored — only existingProfile controls the skip
+    render(<OnboardingWizard />);
+
+    // Should start at Step 1
+    expect(screen.getByText(/regime & dates/i)).toBeInTheDocument();
+    expect(screen.queryByText(/active profile/i)).not.toBeInTheDocument();
   });
 });

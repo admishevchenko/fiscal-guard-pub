@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect } from "react";
 import { useFieldArray, useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -147,6 +148,15 @@ function IncomeEventRow({ index, form, onRemove }: IncomeEventRowProps) {
   // the client is based. Remote work from Portugal → PT-source → 20% flat rate.
   const showRemoteWorkWarning = source === "FOREIGN" && category === "B";
 
+  // Clear stale Cat B coefficient when source switches away from DOMESTIC or
+  // category changes away from B (Art. 31 CIRS only applies to domestic Cat B).
+  const showCatBCoefficient = category === "B" && source === "DOMESTIC";
+  useEffect(() => {
+    if (!showCatBCoefficient) {
+      form.setValue(`events.${index}.catBActivityYear`, undefined);
+    }
+  }, [showCatBCoefficient, form, index]);
+
   return (
     <div className="rounded-lg border p-4 space-y-4">
       <div className="flex items-center justify-between">
@@ -283,7 +293,7 @@ function IncomeEventRow({ index, form, onRemove }: IncomeEventRowProps) {
       />
 
       {/* Regime simplificado activity year — only for domestic Cat B (Art. 31 CIRS) */}
-      {category === "B" && source === "DOMESTIC" && (
+      {showCatBCoefficient && (
         <FormField
           control={form.control}
           name={`events.${index}.catBActivityYear`}

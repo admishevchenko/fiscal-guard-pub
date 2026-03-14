@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
@@ -33,13 +33,13 @@ interface OnboardingWizardProps {
 
 export function OnboardingWizard({ existingProfile }: OnboardingWizardProps) {
   const router = useRouter();
-  const searchParams = useSearchParams();
 
   // If the user already has a profile, always jump to income step.
   // Profile editing should be done separately, not during income add.
+  // IMPORTANT: Only honor ?step=income when existingProfile is present to
+  // prevent orphan income events being created without a tax profile.
   const hasProfile = existingProfile !== undefined;
-  const stepParam = searchParams.get("step") === "income";
-  const initialStep: 0 | 1 | 2 = hasProfile || stepParam ? 2 : 0;
+  const initialStep: 0 | 1 | 2 = hasProfile ? 2 : 0;
 
   const [step, setStep] = useState<0 | 1 | 2>(initialStep);
   const [profileData, setProfileData] = useState<Partial<WizardProfileData>>(
@@ -62,7 +62,7 @@ export function OnboardingWizard({ existingProfile }: OnboardingWizardProps) {
   }
 
   async function handleStep3Submit(events: IncomeEventFormData[]) {
-    const isAddIncomeOnly = hasProfile || initialStep === 2;
+    const isAddIncomeOnly = hasProfile;
     const profile = profileData as WizardProfileData;
 
     // When adding income only, the user already has a profile — skip save.
@@ -150,7 +150,9 @@ export function OnboardingWizard({ existingProfile }: OnboardingWizardProps) {
           </span>
           <span className="text-muted-foreground">·</span>
           <span className="text-muted-foreground">
-            Code: {existingProfile.professionCode}
+            {existingProfile.professionCode === "0000"
+              ? "No profession code"
+              : `Code: ${existingProfile.professionCode}`}
           </span>
         </div>
       )}

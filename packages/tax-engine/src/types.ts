@@ -36,8 +36,8 @@ export interface EngineTaxProfile {
   regimeEntryDate: string;
   /** ISO 8601 date when regime ended; null = still active */
   regimeExitDate: string | null;
-  /** Fallback CNAEF profession code (used if income event has none) */
-  professionCode: string;
+  /** Fallback CNAEF profession code (used if income event has none). Undefined = no code. */
+  professionCode?: string | undefined;
   /** IFICI only: true if user performs an R&D / innovation activity */
   isInnovationActivity: boolean;
   /**

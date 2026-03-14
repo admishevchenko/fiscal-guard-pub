@@ -93,6 +93,17 @@ export class IncomeClassifier {
     ) {
       const code = event.professionCode ?? profile.professionCode;
 
+      // No profession code — cannot be eligible for flat rate
+      if (code === undefined) {
+        return {
+          treatment: "PROGRESSIVE" as const,
+          reasoningJson: JSON.stringify({
+            rule: "Art. 68 CIRS — no profession code provided",
+            status: "progressive",
+          } satisfies ClassificationReasoning),
+        };
+      }
+
       // 2a: Suspect code — PENDING_MANUAL_REVIEW (conservative: apply PROGRESSIVE until resolved)
       if (SUSPECT_PROFESSION_CODES.has(code)) {
         return {
