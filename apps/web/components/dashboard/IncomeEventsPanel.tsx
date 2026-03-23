@@ -23,17 +23,20 @@ export interface IncomeEventRow {
   /** taxable amount after Art. 31 CIRS coefficient (same as gross for non-Cat B) */
   taxableAmountCents: number;
   source: "PT" | "FOREIGN";
-  sourceCountry: string;
+  sourceCountry: string | null;
   description: string | null;
-  treatment:
+  /** undefined when calculation could not run (e.g. RegimeNotActiveError) */
+  treatment?:
     | "FLAT_20"
     | "DTA_EXEMPT"
     | "PENSION_EXEMPT"
     | "PENSION_10PCT"
     | "PROGRESSIVE"
     | "PENDING_MANUAL_REVIEW"
-    | "BLACKLIST_35";
-  taxCents: number;
+    | "BLACKLIST_35"
+    | undefined;
+  /** undefined when calculation could not run */
+  taxCents?: number | undefined;
 }
 
 const CATEGORY_LABELS: Record<string, string> = {
@@ -111,7 +114,7 @@ export function IncomeEventsPanel({ events, taxYear }: IncomeEventsPanelProps) {
         ) : (
           <div className="space-y-2">
             {events.map((evt) => {
-              const badge = TREATMENT_BADGE[evt.treatment];
+              const badge = evt.treatment ? TREATMENT_BADGE[evt.treatment] : null;
               const isDeleting = deletingId === evt.id || isPending;
               const hasCoefficient = evt.taxableAmountCents !== evt.grossAmountCents;
 
@@ -126,9 +129,15 @@ export function IncomeEventsPanel({ events, taxYear }: IncomeEventsPanelProps) {
                       <span className="font-medium text-xs text-muted-foreground">
                         {CATEGORY_LABELS[evt.category] ?? evt.category}
                       </span>
-                      <Badge variant={badge.variant} className="text-xs">
-                        {badge.label}
-                      </Badge>
+                      {badge ? (
+                        <Badge variant={badge.variant} className="text-xs">
+                          {badge.label}
+                        </Badge>
+                      ) : (
+                        <Badge variant="outline" className="text-xs text-muted-foreground">
+                          — no calculation
+                        </Badge>
+                      )}
                       <span className="text-xs text-muted-foreground">
                         {evt.source === "PT" ? "🇵🇹 Domestic" : `🌍 ${evt.sourceCountry}`}
                       </span>
@@ -154,7 +163,9 @@ export function IncomeEventsPanel({ events, taxYear }: IncomeEventsPanelProps) {
                       <p className="text-xs text-muted-foreground">
                         {evt.treatment === "DTA_EXEMPT" || evt.treatment === "PENSION_EXEMPT"
                           ? "exempt"
-                          : `tax: ${fmt(evt.taxCents)}`}
+                          : evt.taxCents !== undefined
+                            ? `tax: ${fmt(evt.taxCents)}`
+                            : "tax: —"}
                       </p>
                     </div>
                     <Button

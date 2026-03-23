@@ -1,5 +1,5 @@
 import { calculateTaxAction } from "@/actions/tax";
-import { getTaxProfile } from "@/actions/profile";
+import { getTaxProfile, getIncomeEventsForYear } from "@/actions/profile";
 import { ELIGIBLE_PROFESSION_CODES, SUSPECT_PROFESSION_CODES } from "@fiscal-guard/tax-engine";
 import { TaxSummaryCard } from "@/components/dashboard/TaxSummaryCard";
 import { RegimeComparisonChart } from "@/components/dashboard/RegimeComparisonChart";
@@ -39,14 +39,28 @@ export default async function DashboardPage({
   const codeIsSuspect = SUSPECT_PROFESSION_CODES.has(professionCode);
   const codeIsUnknown = professionCode.length === 4 && !codeIsEligible && !codeIsSuspect;
 
-  // Try to run the calculation — returns null if no income events exist yet
+  // Try to run the calculation — returns null if no income events exist yet.
+  // Fetching income events independently ensures they're always displayed even
+  // if the calculation throws (e.g. RegimeNotActiveError for years before the
+  // user's regime entry date).
   let calculation: CalculationResult | null = null;
-  try {
-    calculation = await calculateTaxAction(taxYear);
-  } catch {
-    // RegimeExpiredError / RegimeNotActiveError are non-fatal on the dashboard
-    calculation = null;
-  }
+  let calcErrorName: string | null = null;
+  let calcErrorMessage: string | null = null;
+  const [rawEvents] = await Promise.all([
+    getIncomeEventsForYear(taxYear),
+    (async () => {
+      try {
+        calculation = await calculateTaxAction(taxYear);
+      } catch (err) {
+        // Capture regime errors for display; all others are non-fatal here
+        if (err instanceof Error) {
+          calcErrorName = err.name;
+          calcErrorMessage = err.message;
+        }
+        calculation = null;
+      }
+    })(),
+  ]);
 
   return (
     <div className="space-y-8">
@@ -175,7 +189,7 @@ export default async function DashboardPage({
                     ? Math.round(ce.event.grossAmountCents * ce.event.catBCoefficient)
                     : ce.event.grossAmountCents,
                 source: ce.event.source,
-                sourceCountry: ce.event.sourceCountry,
+                sourceCountry: ce.event.sourceCountry ?? null,
                 description: ce.event.description ?? null,
                 treatment: ce.treatment,
                 taxCents: ce.taxCents,
@@ -184,6 +198,59 @@ export default async function DashboardPage({
             return <IncomeEventsPanel events={eventRows} taxYear={taxYear} />;
           })()}
         </>
+      ) : calcErrorName && rawEvents.length > 0 ? (
+        /* Regime calculation error — show events without tax breakdown */
+        <>
+          <Card className="border-amber-400 bg-amber-50 dark:border-amber-700 dark:bg-amber-950/30">
+            <CardContent className="pt-4 text-sm text-amber-800 dark:text-amber-300">
+              <p className="font-semibold">
+                ⚠️ Tax calculation unavailable for {taxYear}
+              </p>
+              <p className="mt-1">
+                {calcErrorName === "RegimeNotActiveError"
+                  ? `Your NHR/IFICI regime was not yet active for tax year ${taxYear}. Income events are shown below but no tax liability can be calculated.`
+                  : calcErrorName === "RegimeExpiredError"
+                    ? `Your NHR/IFICI regime had already expired for tax year ${taxYear}. Income events are shown below but no tax liability can be calculated.`
+                    : calcErrorMessage ?? "An unexpected error occurred during calculation."}
+              </p>
+            </CardContent>
+          </Card>
+          <IncomeEventsPanel
+            events={rawEvents.map((r) => ({
+              id: r.id,
+              taxYear: r.tax_year,
+              category: r.category,
+              grossAmountCents: r.gross_amount_cents,
+              taxableAmountCents:
+                r.category === "B" && r.cat_b_coefficient != null
+                  ? Math.round(r.gross_amount_cents * r.cat_b_coefficient)
+                  : r.gross_amount_cents,
+              source: r.source,
+              sourceCountry: r.source_country,
+              description: r.description,
+              // treatment and taxCents intentionally omitted — calculation failed
+            }))}
+            taxYear={taxYear}
+          />
+        </>
+      ) : rawEvents.length > 0 ? (
+        /* Has events but calculation returned null (shouldn't happen, defensive) */
+        <IncomeEventsPanel
+          events={rawEvents.map((r) => ({
+            id: r.id,
+            taxYear: r.tax_year,
+            category: r.category,
+            grossAmountCents: r.gross_amount_cents,
+            taxableAmountCents:
+              r.category === "B" && r.cat_b_coefficient != null
+                ? Math.round(r.gross_amount_cents * r.cat_b_coefficient)
+                : r.gross_amount_cents,
+            source: r.source,
+            sourceCountry: r.source_country,
+            description: r.description,
+          }))}
+          taxYear={taxYear}
+        />
       ) : (
         /* CTA when no income events exist */
         <Card className="flex flex-col items-center gap-4 py-16 text-center">
