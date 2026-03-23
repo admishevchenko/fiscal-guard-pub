@@ -1,5 +1,6 @@
 "use server";
 
+import { revalidatePath } from "next/cache";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { OnboardingSchema, type OnboardingFormData } from "@/lib/validations/taxProfile";
 import { IncomeEventSchema, type IncomeEventFormData } from "@/lib/validations/incomeEvent";
@@ -253,6 +254,11 @@ export async function saveIncomeEvents(
   if (error) {
     return { error: `Failed to save income events: ${error.message}` };
   }
+
+  // Bust the Next.js Router Cache for all /dashboard routes so any pre-fetched
+  // snapshot (e.g. empty state for /dashboard?year=2025) is discarded before
+  // the client navigates to the relevant year.
+  revalidatePath("/dashboard", "layout");
 
   return {};
 }

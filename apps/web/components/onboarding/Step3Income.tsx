@@ -57,13 +57,21 @@ interface Step3IncomeProps {
   onSubmit: (events: IncomeEventFormData[]) => void;
   onBack?: (() => void) | undefined;
   isSubmitting?: boolean;
+  /** Pre-selects the tax year for all new events (e.g. passed from ?year= query param). */
+  defaultYear?: number | undefined;
 }
 
-export function Step3Income({ onSubmit, onBack, isSubmitting }: Step3IncomeProps) {
+export function Step3Income({ onSubmit, onBack, isSubmitting, defaultYear }: Step3IncomeProps) {
+  // Clamp defaultYear to the valid TAX_YEARS range; fall back to current year.
+  const clampedDefault =
+    defaultYear !== undefined && TAX_YEARS.includes(defaultYear)
+      ? defaultYear
+      : DEFAULT_EVENT.taxYear;
+
   const form = useForm<Step3FormValues, unknown, Step3FormValues>({
     resolver: zodResolver(Step3Schema),
     defaultValues: {
-      events: [{ ...DEFAULT_EVENT }],
+      events: [{ ...DEFAULT_EVENT, taxYear: clampedDefault }],
     },
   });
 
@@ -98,7 +106,7 @@ export function Step3Income({ onSubmit, onBack, isSubmitting }: Step3IncomeProps
           type="button"
           variant="outline"
           className="w-full"
-          onClick={() => append({ ...DEFAULT_EVENT })}
+          onClick={() => append({ ...DEFAULT_EVENT, taxYear: clampedDefault })}
         >
           + Add income event
         </Button>

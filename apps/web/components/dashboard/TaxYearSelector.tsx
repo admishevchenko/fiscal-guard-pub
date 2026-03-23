@@ -12,7 +12,10 @@ interface TaxYearSelectorProps {
 export function TaxYearSelector({
   currentYear,
   minYear = 2024,
-  maxYear = new Date().getFullYear(),
+  // Match the income form's TAX_YEARS range (currentYear + 1) so events added
+  // for the upcoming year are always selectable. Previously capped at
+  // currentYear which hid events entered for year+1 via the income form.
+  maxYear = new Date().getFullYear() + 1,
 }: TaxYearSelectorProps) {
   const router = useRouter();
   const searchParams = useSearchParams();

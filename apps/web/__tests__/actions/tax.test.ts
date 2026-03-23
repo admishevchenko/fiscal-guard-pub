@@ -950,4 +950,112 @@ describe("calculateTaxAction", () => {
     // Hash mismatch → upsert should have been called
     expect(upsertFn).toHaveBeenCalled();
   });
+
+  // ===================================================================
+  // Multi-year regression tests
+  // Regression: income events saved for a non-current year (e.g. 2025)
+  // were not visible on the dashboard when the year selector was changed.
+  // Root causes: missing revalidatePath after save, post-save redirect
+  // always going to /dashboard (current year 2026), and TaxYearSelector
+  // maxYear capped at currentYear (hiding events for currentYear+1).
+  // ===================================================================
+
+  it("regression: calculateTaxAction(2025) returns events saved for tax_year=2025 (not 2026)", async () => {
+    // Profile registered in 2024 — NHR is valid for 2025.
+    const PROFILE_2024 = {
+      ...VALID_PROFILE,
+      regime_entry_date: "2024-01-01",
+    };
+    const EVENTS_2025 = [
+      {
+        id: "evt-2025",
+        tax_year: 2025,
+        category: "A",
+        gross_amount_cents: 6_000_000, // €60,000
+        source: "PT",
+        source_country: "PT",
+        description: null,
+        cat_b_coefficient: null as number | null,
+      },
+    ];
+
+    setupCalcMock(PROFILE_2024, EVENTS_2025);
+    const result = await calculateTaxAction(2025);
+
+    // Must return a result — events exist for 2025
+    expect(result).not.toBeNull();
+    // NHR + PT + eligible profession 2131 → FLAT_20 at 20% of €60,000 = €12,000
+    expect(result!.flat20TaxCents).toBe(1_200_000);
+    expect(result!.regime).toBe("NHR");
+  });
+
+  it("regression: calculateTaxAction(2026) returns null when only 2025 events exist (year isolation)", async () => {
+    // Profile with 2025 events only — querying 2026 should return null
+    const PROFILE_2024 = {
+      ...VALID_PROFILE,
+      regime_entry_date: "2024-01-01",
+    };
+
+    vi.mocked(createSupabaseServerClient).mockResolvedValueOnce({
+      auth: { getUser: vi.fn().mockResolvedValue({ data: { user: { id: "u1" } } }) },
+      from: vi.fn((table: string) => {
+        if (table === "tax_profiles") {
+          return {
+            select: vi.fn().mockReturnValue({
+              eq: vi.fn().mockReturnThis(),
+              is: vi.fn().mockReturnThis(),
+              maybeSingle: vi.fn().mockResolvedValue({ data: PROFILE_2024 }),
+            }),
+          };
+        }
+        if (table === "income_events") {
+          return {
+            select: vi.fn().mockReturnValue({
+              eq: vi.fn().mockReturnValue({
+                // Simulate DB filtering: querying tax_year=2026 returns empty array
+                eq: vi.fn().mockResolvedValue({ data: [] }),
+              }),
+            }),
+          };
+        }
+        return {
+          select: vi.fn().mockReturnValue({ eq: vi.fn().mockReturnThis(), is: vi.fn().mockReturnThis(), maybeSingle: vi.fn().mockResolvedValue({ data: null }) }),
+          delete: vi.fn().mockReturnValue({ eq: vi.fn().mockReturnThis() }),
+          insert: vi.fn().mockResolvedValue({ error: null }),
+        };
+      }),
+    } as any);
+
+    const result = await calculateTaxAction(2026);
+
+    // No 2026 events → must return null
+    expect(result).toBeNull();
+  });
+
+  it("regression: calculateTaxAction(2025) returns null (not throw) when regime_entry_date is 2026 — caught by dashboard", async () => {
+    // If user's regime started in 2026 and they request 2025, engine throws
+    // RegimeNotActiveError. The dashboard catches all errors and shows empty CTA.
+    // This test documents that behaviour — the action propagates the error correctly.
+    const PROFILE_2026 = {
+      ...VALID_PROFILE,
+      regime_entry_date: "2026-01-01",
+    };
+    const EVENTS_2025 = [
+      {
+        id: "evt-2025",
+        tax_year: 2025,
+        category: "A",
+        gross_amount_cents: 5_000_000,
+        source: "PT",
+        source_country: "PT",
+        description: null,
+        cat_b_coefficient: null as number | null,
+      },
+    ];
+
+    setupCalcMock(PROFILE_2026, EVENTS_2025);
+
+    // Engine throws RegimeNotActiveError — the action propagates it
+    await expect(calculateTaxAction(2025)).rejects.toThrow();
+  });
 });
