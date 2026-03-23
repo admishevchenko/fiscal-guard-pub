@@ -96,7 +96,7 @@ export function IncomeEventsPanel({ events, taxYear }: IncomeEventsPanelProps) {
           </span>
         </CardTitle>
         <Link
-          href="/onboarding?step=income"
+          href={`/onboarding?step=income&year=${taxYear}`}
           className="text-sm font-medium text-primary hover:underline"
         >
           + Add income

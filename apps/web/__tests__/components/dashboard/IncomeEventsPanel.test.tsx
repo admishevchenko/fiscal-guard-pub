@@ -133,10 +133,16 @@ describe("IncomeEventsPanel", () => {
     expect(toast.error).toHaveBeenCalledWith("Forbidden");
   });
 
-  it("'+ Add income' link points to /onboarding?step=income", () => {
+  it("'+ Add income' link includes current taxYear in href (year-aware fix)", () => {
+    render(<IncomeEventsPanel events={[]} taxYear={2025} />);
+    const link = screen.getByRole("link", { name: /\+ add income/i });
+    expect(link).toHaveAttribute("href", "/onboarding?step=income&year=2025");
+  });
+
+  it("'+ Add income' link uses default year 2026 for current year", () => {
     render(<IncomeEventsPanel events={[]} taxYear={2026} />);
     const link = screen.getByRole("link", { name: /\+ add income/i });
-    expect(link).toHaveAttribute("href", "/onboarding?step=income");
+    expect(link).toHaveAttribute("href", "/onboarding?step=income&year=2026");
   });
 
   it("shows 🇵🇹 Domestic for PT source", () => {

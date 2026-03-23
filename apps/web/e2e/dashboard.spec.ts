@@ -69,10 +69,19 @@ test.describe("Dashboard — authenticated", () => {
     ).toBeVisible({ timeout: 10_000 });
   });
 
-  test("'+ Add income' link navigates to /onboarding?step=income", async ({ page }) => {
+  test("'+ Add income' nav link includes year param from current dashboard URL", async ({ page }) => {
+    await page.goto("/dashboard?year=2025");
+
+    const addLink = page.getByRole("link", { name: /\+ add income/i });
+    // Year-aware link: must forward the current year to the onboarding form
+    await expect(addLink).toHaveAttribute("href", "/onboarding?step=income&year=2025");
+  });
+
+  test("'+ Add income' nav link falls back to no year param when on default dashboard", async ({ page }) => {
     await page.goto("/dashboard");
 
     const addLink = page.getByRole("link", { name: /\+ add income/i });
+    // No ?year= in URL → link should not include year (defaults to current year in form)
     await expect(addLink).toHaveAttribute("href", "/onboarding?step=income");
   });
 });

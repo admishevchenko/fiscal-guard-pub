@@ -129,7 +129,7 @@ describe("OnboardingWizard", () => {
     expect(saveIncomeEvents).toHaveBeenCalled();
   });
 
-  it("calls router.refresh() then router.push('/dashboard') on full flow submit", async () => {
+  it("calls router.refresh() then router.push('/dashboard?year=<savedYear>') on full flow submit", async () => {
     const user = userEvent.setup();
     render(<OnboardingWizard />);
 
@@ -142,7 +142,9 @@ describe("OnboardingWizard", () => {
     await user.click(screen.getByRole("button", { name: /finish setup/i }));
 
     expect(mockRefresh).toHaveBeenCalled();
-    expect(mockPush).toHaveBeenCalledWith("/dashboard");
+    // Regression fix: redirect to /dashboard?year=<savedYear> so the user lands
+    // directly on the year they just saved events to, not the current-year default.
+    expect(mockPush).toHaveBeenCalledWith(expect.stringMatching(/^\/dashboard\?year=\d{4}$/));
     // refresh() must be called before push() to invalidate any pre-fetched snapshot
     const refreshOrder = mockRefresh.mock.invocationCallOrder[0]!;
     const pushOrder = mockPush.mock.invocationCallOrder[0]!;

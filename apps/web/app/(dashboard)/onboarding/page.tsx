@@ -2,8 +2,19 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { OnboardingWizard } from "@/components/onboarding/OnboardingWizard";
 import { getTaxProfile } from "@/actions/profile";
 
-export default async function OnboardingPage() {
+export default async function OnboardingPage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
+  const params = await searchParams;
   const existingProfile = await getTaxProfile();
+
+  // Read ?year= so the income form can pre-select the right tax year when
+  // the user arrives from a year-specific dashboard view (e.g. ?year=2025).
+  const rawYear = typeof params["year"] === "string" ? parseInt(params["year"], 10) : NaN;
+  const defaultYear =
+    !isNaN(rawYear) && rawYear >= 2024 && rawYear <= 2030 ? rawYear : undefined;
 
   return (
     <div className="flex min-h-[calc(100vh-72px)] items-start justify-center pt-12">
@@ -29,6 +40,7 @@ export default async function OnboardingPage() {
                   }
                 : undefined
             }
+            {...(defaultYear !== undefined ? { defaultYear } : {})}
           />
         </CardContent>
       </Card>

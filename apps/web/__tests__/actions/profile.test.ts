@@ -59,6 +59,16 @@ vi.mock("@/lib/supabase/server", () => ({
   }),
 }));
 
+// Mock next/cache so revalidatePath() calls in saveIncomeEvents don't throw
+// in the test environment (Next.js internals are not available in Vitest).
+// Must use vi.hoisted() because vi.mock() is hoisted before variable declarations.
+const { mockRevalidatePath } = vi.hoisted(() => ({
+  mockRevalidatePath: vi.fn(),
+}));
+vi.mock("next/cache", () => ({
+  revalidatePath: mockRevalidatePath,
+}));
+
 // Import AFTER mock setup
 import {
   saveTaxProfile,
@@ -438,6 +448,54 @@ describe("saveIncomeEvents", () => {
     ]);
     const row = mockInsert.mock.calls[0]![0]![0]!;
     expect(Object.keys(row)).not.toContain("cat_b_coefficient");
+  });
+
+  // ===================================================================
+  // Multi-year regression: events must be saved with the exact tax_year
+  // the user selected — not the current year default.
+  // Regression: post-save redirect went to /dashboard (default year 2026)
+  // instead of /dashboard?year=<savedYear>, hiding freshly saved events
+  // for non-current years behind the current-year empty state.
+  // ===================================================================
+
+  it("regression: saves events with tax_year=2025 when user selects year 2025", async () => {
+    await saveIncomeEvents([
+      { taxYear: 2025, category: "A", amountEuros: 50000, source: "DOMESTIC" },
+    ]);
+    const row = mockInsert.mock.calls[0]![0]![0]!;
+    // Must persist the user-selected year verbatim — not the server's current year
+    expect(row.tax_year).toBe(2025);
+  });
+
+  it("regression: calls revalidatePath('/dashboard', 'layout') after save to bust Router Cache", async () => {
+    // Without revalidatePath, Next.js may serve a stale empty-state snapshot of
+    // /dashboard?year=2025 from the Router Cache even after the events are saved.
+    mockRevalidatePath.mockClear();
+    await saveIncomeEvents([
+      { taxYear: 2025, category: "A", amountEuros: 50000, source: "DOMESTIC" },
+    ]);
+    expect(mockRevalidatePath).toHaveBeenCalledWith("/dashboard", "layout");
+  });
+
+  it("regression: saves events with tax_year=2024 preserving historical year", async () => {
+    await saveIncomeEvents([
+      { taxYear: 2024, category: "F", amountEuros: 12000, source: "DOMESTIC" },
+    ]);
+    const row = mockInsert.mock.calls[0]![0]![0]!;
+    expect(row.tax_year).toBe(2024);
+    expect(row.received_at).toBe("2024-12-31T00:00:00Z");
+  });
+
+  it("regression: mixed multi-year batch preserves each event's own tax_year", async () => {
+    await saveIncomeEvents([
+      { taxYear: 2024, category: "A", amountEuros: 40000, source: "DOMESTIC" },
+      { taxYear: 2025, category: "E", amountEuros: 8000, source: "DOMESTIC" },
+      { taxYear: 2026, category: "H", amountEuros: 15000, source: "DOMESTIC" },
+    ]);
+    const rows = mockInsert.mock.calls[0]![0]!;
+    expect(rows[0].tax_year).toBe(2024);
+    expect(rows[1].tax_year).toBe(2025);
+    expect(rows[2].tax_year).toBe(2026);
   });
 });
 

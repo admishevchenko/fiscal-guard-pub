@@ -2,6 +2,7 @@ import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { SignOutButton } from "@/components/dashboard/SignOutButton";
+import { AddIncomeNavLink } from "@/components/dashboard/AddIncomeNavLink";
 import Link from "next/link";
 
 export default async function DashboardLayout({
@@ -50,12 +51,7 @@ export default async function DashboardLayout({
               Fiscal Guard
             </Link>
             {taxProfile && (
-              <Link
-                href="/onboarding?step=income"
-                className="text-sm text-primary hover:underline"
-              >
-                + Add income
-              </Link>
+              <AddIncomeNavLink />
             )}
           </div>
           <div className="flex items-center gap-4">

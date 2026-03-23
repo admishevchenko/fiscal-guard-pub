@@ -29,9 +29,11 @@ const STEP_LABELS = [
 
 interface OnboardingWizardProps {
   existingProfile?: ExistingProfile | undefined;
+  /** Pre-selected tax year from the ?year= query param (e.g. coming from dashboard). */
+  defaultYear?: number | undefined;
 }
 
-export function OnboardingWizard({ existingProfile }: OnboardingWizardProps) {
+export function OnboardingWizard({ existingProfile, defaultYear }: OnboardingWizardProps) {
   const router = useRouter();
 
   // If the user already has a profile, always jump to income step.
@@ -115,7 +117,15 @@ export function OnboardingWizard({ existingProfile }: OnboardingWizardProps) {
       // of /dashboard is discarded prior to the push (Next.js App Router pattern
       // for post-mutation cache busting).
       router.refresh();
-      router.push("/dashboard");
+      // Redirect to the year of the first saved event so the user immediately
+      // sees the events they just added (regression fix: previously always
+      // redirected to /dashboard with no year, showing the current-year empty state
+      // instead of the year the events were actually saved to).
+      const savedYear =
+        events.length > 0
+          ? events[0]!.taxYear
+          : (defaultYear ?? new Date().getFullYear());
+      router.push(`/dashboard?year=${savedYear}`);
     } catch (err) {
       const message = err instanceof Error ? err.message : "Unexpected error";
       toast.error(message);
@@ -192,6 +202,7 @@ export function OnboardingWizard({ existingProfile }: OnboardingWizardProps) {
           onSubmit={handleStep3Submit}
           onBack={hasProfile ? undefined : () => setStep(1)}
           isSubmitting={isSubmitting}
+          {...(defaultYear !== undefined ? { defaultYear } : {})}
         />
       )}
     </div>
