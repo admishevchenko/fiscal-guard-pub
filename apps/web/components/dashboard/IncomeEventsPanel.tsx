@@ -49,9 +49,9 @@ const CATEGORY_LABELS: Record<string, string> = {
 };
 
 const TREATMENT_BADGE: Record<
-  IncomeEventRow["treatment"],
+  NonNullable<IncomeEventRow["treatment"]>,
   { label: string; variant: "default" | "secondary" | "destructive" | "outline" }
-> = {
+>= {
   FLAT_20:               { label: "20% Flat rate", variant: "default" },
   DTA_EXEMPT:            { label: "DTA Exempt (0%)", variant: "secondary" },
   PENSION_EXEMPT:        { label: "Pension Exempt (0%)", variant: "secondary" },

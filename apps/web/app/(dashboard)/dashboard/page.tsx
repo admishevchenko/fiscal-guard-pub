@@ -39,28 +39,21 @@ export default async function DashboardPage({
   const codeIsSuspect = SUSPECT_PROFESSION_CODES.has(professionCode);
   const codeIsUnknown = professionCode.length === 4 && !codeIsEligible && !codeIsSuspect;
 
-  // Try to run the calculation — returns null if no income events exist yet.
-  // Fetching income events independently ensures they're always displayed even
-  // if the calculation throws (e.g. RegimeNotActiveError for years before the
-  // user's regime entry date).
+  // Fetch income events independently so they display even when calculation
+  // throws (e.g. RegimeNotActiveError for years before the regime entry date).
+  const rawEvents = await getIncomeEventsForYear(taxYear);
+
   let calculation: CalculationResult | null = null;
   let calcErrorName: string | null = null;
   let calcErrorMessage: string | null = null;
-  const [rawEvents] = await Promise.all([
-    getIncomeEventsForYear(taxYear),
-    (async () => {
-      try {
-        calculation = await calculateTaxAction(taxYear);
-      } catch (err) {
-        // Capture regime errors for display; all others are non-fatal here
-        if (err instanceof Error) {
-          calcErrorName = err.name;
-          calcErrorMessage = err.message;
-        }
-        calculation = null;
-      }
-    })(),
-  ]);
+  try {
+    calculation = await calculateTaxAction(taxYear);
+  } catch (err) {
+    if (err instanceof Error) {
+      calcErrorName = err.name;
+      calcErrorMessage = err.message;
+    }
+  }
 
   return (
     <div className="space-y-8">
