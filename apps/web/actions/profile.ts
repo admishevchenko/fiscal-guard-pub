@@ -45,7 +45,28 @@ function catBCoefficientFromYear(activityYear: number | undefined): number | nul
 // ---------------------------------------------------------------------------
 
 /**
- * Fetches the currently active tax_profile row for the authenticated user.
+ * Fetches the display_name for the authenticated user from the profiles table.
+ * Returns null if not set yet.
+ */
+export async function getDisplayName(): Promise<string | null> {
+  const supabase = await createSupabaseServerClient();
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) return null;
+
+  const { data } = await supabase
+    .from("profiles")
+    .select("display_name")
+    .eq("user_id", user.id)
+    .maybeSingle();
+
+  return (data as { display_name: string } | null)?.display_name ?? null;
+}
+
+/**
  * An "active" profile has regime_exit_date IS NULL.
  * Returns null if the user has no active profile (i.e. needs onboarding).
  */
