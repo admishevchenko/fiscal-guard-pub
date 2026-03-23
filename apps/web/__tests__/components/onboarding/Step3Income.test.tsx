@@ -241,4 +241,47 @@ describe("Step3Income", () => {
     });
     expect(onSubmit).not.toHaveBeenCalled();
   });
+
+  // ===================================================================
+  // defaultYear prop — regression tests for year-filtering fix
+  // Ensures the form pre-selects the year passed from the dashboard URL
+  // (?year= param) rather than always defaulting to currentYear.
+  // ===================================================================
+
+  it("pre-selects defaultYear=2025 as the initial tax year", () => {
+    const onSubmit = vi.fn();
+    render(<Step3Income onSubmit={onSubmit} defaultYear={2025} />);
+
+    // The year selector combobox (index 0 = year) should show 2025
+    const comboboxes = screen.getAllByRole("combobox");
+    expect(comboboxes[0]).toHaveTextContent("2025");
+  });
+
+  it("uses current-year default when defaultYear is not provided", () => {
+    const currentYear = new Date().getFullYear();
+    const onSubmit = vi.fn();
+    render(<Step3Income onSubmit={onSubmit} />);
+
+    const comboboxes = screen.getAllByRole("combobox");
+    expect(comboboxes[0]).toHaveTextContent(String(currentYear));
+  });
+
+  it("clamps out-of-range defaultYear (e.g. 1999) to current year default", () => {
+    const currentYear = new Date().getFullYear();
+    const onSubmit = vi.fn();
+    // 1999 is not in TAX_YEARS — must fall back to CURRENT_YEAR
+    render(<Step3Income onSubmit={onSubmit} defaultYear={1999} />);
+
+    const comboboxes = screen.getAllByRole("combobox");
+    expect(comboboxes[0]).toHaveTextContent(String(currentYear));
+  });
+
+  it("clamps out-of-range defaultYear (e.g. 2099) to current year default", () => {
+    const currentYear = new Date().getFullYear();
+    const onSubmit = vi.fn();
+    render(<Step3Income onSubmit={onSubmit} defaultYear={2099} />);
+
+    const comboboxes = screen.getAllByRole("combobox");
+    expect(comboboxes[0]).toHaveTextContent(String(currentYear));
+  });
 });
