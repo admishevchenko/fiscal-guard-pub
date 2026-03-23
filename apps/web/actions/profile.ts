@@ -45,7 +45,28 @@ function catBCoefficientFromYear(activityYear: number | undefined): number | nul
 // ---------------------------------------------------------------------------
 
 /**
- * Fetches the currently active tax_profile row for the authenticated user.
+ * Fetches the display_name for the authenticated user from the profiles table.
+ * Returns null if not set yet.
+ */
+export async function getDisplayName(): Promise<string | null> {
+  const supabase = await createSupabaseServerClient();
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) return null;
+
+  const { data } = await supabase
+    .from("profiles")
+    .select("display_name")
+    .eq("user_id", user.id)
+    .maybeSingle();
+
+  return (data as { display_name: string } | null)?.display_name ?? null;
+}
+
+/**
  * An "active" profile has regime_exit_date IS NULL.
  * Returns null if the user has no active profile (i.e. needs onboarding).
  */
@@ -261,4 +282,47 @@ export async function saveIncomeEvents(
   revalidatePath("/dashboard", "layout");
 
   return {};
+}
+
+// ---------------------------------------------------------------------------
+// Read: income events for a given tax year
+// ---------------------------------------------------------------------------
+
+export interface RawIncomeEventRow {
+  id: string;
+  tax_year: number;
+  category: "A" | "B" | "E" | "F" | "G" | "H";
+  gross_amount_cents: number;
+  cat_b_coefficient: number | null;
+  source: "PT" | "FOREIGN";
+  source_country: string | null;
+  description: string | null;
+}
+
+/**
+ * Fetches raw income_events rows for the authenticated user for a given
+ * tax year. Used by the dashboard to display events independently of whether
+ * the tax calculation succeeds (e.g. when RegimeNotActiveError is thrown).
+ */
+export async function getIncomeEventsForYear(
+  taxYear: number
+): Promise<RawIncomeEventRow[]> {
+  const supabase = await createSupabaseServerClient();
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) return [];
+
+  const { data } = await supabase
+    .from("income_events")
+    .select(
+      "id, tax_year, category, gross_amount_cents, cat_b_coefficient, source, source_country, description"
+    )
+    .eq("user_id", user.id)
+    .eq("tax_year", taxYear)
+    .order("created_at", { ascending: true });
+
+  return (data as RawIncomeEventRow[] | null) ?? [];
 }

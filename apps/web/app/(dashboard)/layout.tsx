@@ -56,6 +56,11 @@ export default async function DashboardLayout({
           </div>
           <div className="flex items-center gap-4">
             <span className="text-sm text-gray-500">{user.email}</span>
+            {taxProfile && (
+              <Link href="/settings" className="text-sm text-gray-500 hover:text-gray-900">
+                Settings
+              </Link>
+            )}
             <SignOutButton />
           </div>
         </div>
