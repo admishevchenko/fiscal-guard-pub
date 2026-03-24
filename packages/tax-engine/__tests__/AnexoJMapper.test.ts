@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
-import { mapToAnexoJ } from '@/AnexoJMapper';
-import type { IncomeEvent } from '@fiscal-guard/types';
+import { mapToAnexoJ } from '../src/AnexoJMapper';
+// Use a loose type here to avoid depending on shared types in the test runner
+type IncomeEvent = any;
 
 describe('AnexoJMapper', () => {
   it('serialises a $1,000 dividend from US into Quadro4 with USA/401/1000.00', () => {

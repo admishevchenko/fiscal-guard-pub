@@ -1,12 +1,11 @@
 import { create } from "xmlbuilder2";
-import { Decimal } from "./decimal";
+import { Decimal, logger } from '../../shared-utils/src';
 // Use require-style imports for these CJS modules to avoid TS resolution issues in this workspace
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const countries = require('i18n-iso-countries');
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const { isValid: isValidIBAN } = require('iban');
 import type { IncomeEvent } from "@fiscal-guard/types";
-import { logger } from './logger';
 
 const NS = "http://www.at.gov.pt/schemas/irs/modelo3/2026";
 
