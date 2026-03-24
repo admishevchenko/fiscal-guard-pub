@@ -86,9 +86,19 @@ export function mapToAnexoJ(events: IncomeEvent[]): string {
     linha.ele("C3").txt(centsToDecimalString(evt.grossAmountCents));
 
     // C4: Tax paid abroad — if provided on event (payerTaxPaidCents), else 0.00
-    const taxPaidCents = Number.isInteger(anyEvt.payerTaxPaidCents) ? anyEvt.payerTaxPaidCents : 0;
+    let taxPaidCents = 0;
+    if (anyEvt.payerTaxPaidCents != null) {
+      if (Number.isInteger(anyEvt.payerTaxPaidCents)) {
+        taxPaidCents = anyEvt.payerTaxPaidCents;
+      } else if (typeof anyEvt.payerTaxPaidCents === 'string' && /^\d+$/.test(anyEvt.payerTaxPaidCents)) {
+        taxPaidCents = parseInt(anyEvt.payerTaxPaidCents, 10);
+      } else if (!Number.isNaN(Number(anyEvt.payerTaxPaidCents))) {
+        taxPaidCents = Math.round(Number(anyEvt.payerTaxPaidCents));
+      }
+    }
     if (taxPaidCents < 0) {
       console.warn("Negative payerTaxPaidCents for event", anyEvt.id);
+      taxPaidCents = 0; // clamp negative values
     }
     linha.ele("C4").txt(centsToDecimalString(taxPaidCents));
 
@@ -102,13 +112,28 @@ export function mapToAnexoJ(events: IncomeEvent[]): string {
   for (const evt of events) {
     const anyEvt = evt as any;
     if (!anyEvt.iban && !anyEvt.bic) continue;
-    if (anyEvt.iban && !isValidIBAN(anyEvt.iban)) {
+
+    const hasIban = !!anyEvt.iban;
+    const hasBic = !!anyEvt.bic;
+
+    // If IBAN is present but invalid, allow BIC-only entries if BIC is valid; otherwise skip
+    if (hasIban && !isValidIBAN(anyEvt.iban)) {
       console.warn("Invalid IBAN for event", anyEvt.id);
+      if (!hasBic) continue;
+    }
+
+    // Simple BIC validation: 8 or 11 chars, uppercase letters/digits
+    const bic = (anyEvt.bic ?? "").toString().toUpperCase();
+    const bicValid = /^[A-Z]{6}[A-Z0-9]{2}([A-Z0-9]{3})?$/.test(bic);
+    if (!hasIban && !bicValid) {
+      console.warn("Invalid or missing BIC for event", anyEvt.id);
       continue;
     }
+
     const linha = quadro8.ele("Linha");
-    linha.ele("C1").txt(anyEvt.iban ?? "");
-    linha.ele("C2").txt(anyEvt.bic ?? "");
+    // Emit IBAN only if valid
+    linha.ele("C1").txt(hasIban && isValidIBAN(anyEvt.iban) ? anyEvt.iban : "");
+    linha.ele("C2").txt(bicValid ? bic : (anyEvt.bic ?? ""));
   }
 
   return doc.end({ prettyPrint: false });
