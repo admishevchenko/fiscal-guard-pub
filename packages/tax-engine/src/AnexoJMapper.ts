@@ -1,5 +1,5 @@
 import { create } from "xmlbuilder2";
-import Decimal from "decimal.js";
+import { Decimal } from "./decimal";
 // Use require-style imports for these CJS modules to avoid TS resolution issues in this workspace
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const countries = require('i18n-iso-countries');
@@ -17,9 +17,7 @@ countries.registerLocale(require("i18n-iso-countries/langs/en.json"));
 // Placeholder NIF used when payer NIF is unavailable. Documented sentinel.
 const UNKNOWN_NIF_PLACEHOLDER = "999999990"; // AT placeholder when payer NIF unknown (confirm with legal)
 
-// Decimal configuration for financial formatting. This is intentionally set here
-// but should be centralized if used across multiple modules.
-(Decimal as any).set({ precision: 20, rounding: (Decimal as any).ROUND_HALF_UP });
+
 
 
 function iso2To3(alpha2: string): string {
@@ -66,12 +64,12 @@ function parseMoneyToCents(input: string | number): number {
     if (s.lastIndexOf(',') > s.lastIndexOf('.')) {
       // format like 1.234,56 -> remove '.' thousands, replace ',' with '.' decimal
       s = s.replace(/\./g, '').replace(',', '.');
-      const euros = new (Decimal as any)(s).toNumber();
+      const euros = new Decimal(s).toNumber();
       return Math.round(euros * 100);
     } else {
       // format like 1,234.56 -> remove ',' thousands
       s = s.replace(/,/g, '');
-      const euros = new (Decimal as any)(s).toNumber();
+      const euros = new Decimal(s).toNumber();
       return Math.round(euros * 100);
     }
   }
@@ -82,7 +80,7 @@ function parseMoneyToCents(input: string | number): number {
     const last = parts[parts.length - 1] ?? '';
     if (last.length === 2) {
       s = s.replace(/\./g, '').replace(',', '.');
-      const euros = new (Decimal as any)(s).toNumber();
+      const euros = new Decimal(s).toNumber();
       return Math.round(euros * 100);
     }
     // otherwise treat as integer cents with commas as thousand separators: remove commas
@@ -97,7 +95,7 @@ function parseMoneyToCents(input: string | number): number {
     const last = parts[parts.length - 1] ?? '';
     if (last.length === 2) {
       // treat as euros float
-      const euros = new (Decimal as any)(s).toNumber();
+      const euros = new Decimal(s).toNumber();
       return Math.round(euros * 100);
     }
     // otherwise treat as integer cents with dots as thousand separators
@@ -117,7 +115,7 @@ function parseMoneyToCents(input: string | number): number {
 function centsToDecimalString(cents: number | string): string {
   const centsInt = parseMoneyToCents(cents as any);
   try {
-    const d = new (Decimal as any)(centsInt).dividedBy(100);
+    const d = new Decimal(centsInt).dividedBy(100);
     return (d as any).toFixed(2);
   } catch (e) {
     logger.warn('Failed to format cents value', { cents, error: String(e) });
