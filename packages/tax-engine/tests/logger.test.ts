@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { logger } from '../src/logger';
+import { logger } from '../../shared-utils/src';
 
 describe('logger util', () => {
   it('logger.warn emits structured JSON payload', () => {
