@@ -16,13 +16,16 @@ countries.registerLocale(require("i18n-iso-countries/langs/en.json"));
 // Placeholder NIF used when payer NIF is unavailable. Documented sentinel.
 const UNKNOWN_NIF_PLACEHOLDER = "999999990"; // AT placeholder when payer NIF unknown (confirm with legal)
 
-// Ensure Decimal rounding mode is explicit for tax reporting (HALF_UP is common for financial rounding)
+// Decimal configuration for financial formatting. This is intentionally set here
+// but should be centralized if used across multiple modules.
 (Decimal as any).set({ precision: 20, rounding: (Decimal as any).ROUND_HALF_UP });
 
 function iso2To3(alpha2: string): string {
   if (!alpha2) return "";
+  const s = alpha2.toString().trim();
+  if (s.length === 3 && /^[A-Z]{3}$/i.test(s)) return s.toUpperCase();
   try {
-    const code = countries.alpha2ToAlpha3(alpha2.toUpperCase());
+    const code = countries.alpha2ToAlpha3(s.toUpperCase());
     return code ?? "";
   } catch (e) {
     console.warn("Unable to convert country code", alpha2, e);
@@ -30,10 +33,43 @@ function iso2To3(alpha2: string): string {
   }
 }
 
+function normalizeIban(iban: string): string {
+  if (!iban) return "";
+  return iban.toString().replace(/\s+/g, '').toUpperCase();
+}
+
+function normalizeBic(bic: string): string {
+  if (!bic) return "";
+  return bic.toString().trim().toUpperCase();
+}
+
 function centsToDecimalString(cents: number | string): string {
   if (cents == null || cents === "") return "0.00";
-  const d = new (Decimal as any)(cents).dividedBy(100);
-  return (d as any).toFixed(2);
+  try {
+    if (typeof cents === 'string') {
+      let s = cents.trim();
+      // remove common currency symbols and spaces
+      s = s.replace(/[€$£\s]/g, '');
+      // remove thousand separators like commas
+      s = s.replace(/,/g, '');
+      if (s === '') return '0.00';
+      if (s.includes('.')) {
+        // treat as euros float
+        const d = new (Decimal as any)(s);
+        return (d as any).toFixed(2);
+      }
+      // digits-only: interpret as cents
+      const d = new (Decimal as any)(s).dividedBy(100);
+      return (d as any).toFixed(2);
+    }
+
+    // number input: interpret as cents
+    const d = new (Decimal as any)(cents).dividedBy(100);
+    return (d as any).toFixed(2);
+  } catch (e) {
+    console.warn('Failed to format cents value', cents, e);
+    return '0.00';
+  }
 }
 
 /**
@@ -46,7 +82,7 @@ function centsToDecimalString(cents: number | string): string {
  */
 function mapIncomeCode(evt: IncomeEvent): string {
   const anyEvt = evt as any;
-  if (anyEvt.incomeCode) return String(anyEvt.incomeCode);
+  if (anyEvt.incomeCode != null) return String(anyEvt.incomeCode);
 
   if (evt.category === "B" && anyEvt.hasOpenAtividade === true) return "452";
 
@@ -90,8 +126,25 @@ export function mapToAnexoJ(events: IncomeEvent[]): string {
     if (anyEvt.payerTaxPaidCents != null) {
       if (Number.isInteger(anyEvt.payerTaxPaidCents)) {
         taxPaidCents = anyEvt.payerTaxPaidCents;
-      } else if (typeof anyEvt.payerTaxPaidCents === 'string' && /^\d+$/.test(anyEvt.payerTaxPaidCents)) {
-        taxPaidCents = parseInt(anyEvt.payerTaxPaidCents, 10);
+      } else if (typeof anyEvt.payerTaxPaidCents === 'string') {
+        // normalize string: remove currency symbols and commas
+        let s = anyEvt.payerTaxPaidCents.trim().replace(/[€$£\s]/g, '').replace(/,/g, '');
+        if (s === '') {
+          taxPaidCents = 0;
+        } else if (s.includes('.')) {
+          // interpret as euros float
+          try {
+            taxPaidCents = new (Decimal as any)(s).times(100).toNumber();
+          } catch (e) {
+            console.warn('Failed to parse payerTaxPaidCents', anyEvt.payerTaxPaidCents, e);
+            taxPaidCents = 0;
+          }
+        } else if (/^\d+$/.test(s)) {
+          taxPaidCents = parseInt(s, 10);
+        } else {
+          const num = Number(s);
+          taxPaidCents = Number.isFinite(num) ? Math.round(num) : 0;
+        }
       } else if (!Number.isNaN(Number(anyEvt.payerTaxPaidCents))) {
         taxPaidCents = Math.round(Number(anyEvt.payerTaxPaidCents));
       }
@@ -111,29 +164,25 @@ export function mapToAnexoJ(events: IncomeEvent[]): string {
   const quadro8 = doc.ele("Quadro8");
   for (const evt of events) {
     const anyEvt = evt as any;
-    if (!anyEvt.iban && !anyEvt.bic) continue;
+    const rawIban = anyEvt.iban ?? '';
+    const rawBic = anyEvt.bic ?? '';
+    const ibanNorm = normalizeIban(rawIban);
+    const bicNorm = normalizeBic(rawBic);
+    const hasIban = !!ibanNorm;
+    const hasBic = !!bicNorm;
 
-    const hasIban = !!anyEvt.iban;
-    const hasBic = !!anyEvt.bic;
+    const ibanValid = hasIban && isValidIBAN(ibanNorm);
+    const bicValid = hasBic && /^[A-Z]{6}[A-Z0-9]{2}([A-Z0-9]{3})?$/.test(bicNorm);
 
-    // If IBAN is present but invalid, allow BIC-only entries if BIC is valid; otherwise skip
-    if (hasIban && !isValidIBAN(anyEvt.iban)) {
-      console.warn("Invalid IBAN for event", anyEvt.id);
-      if (!hasBic) continue;
-    }
-
-    // Simple BIC validation: 8 or 11 chars, uppercase letters/digits
-    const bic = (anyEvt.bic ?? "").toString().toUpperCase();
-    const bicValid = /^[A-Z]{6}[A-Z0-9]{2}([A-Z0-9]{3})?$/.test(bic);
-    if (!hasIban && !bicValid) {
-      console.warn("Invalid or missing BIC for event", anyEvt.id);
+    // Require at least one valid identifier before emitting
+    if (!ibanValid && !bicValid) {
+      if (hasIban || hasBic) console.warn('Skipping Quadro8 entry: no valid IBAN or BIC for event', anyEvt.id);
       continue;
     }
 
     const linha = quadro8.ele("Linha");
-    // Emit IBAN only if valid
-    linha.ele("C1").txt(hasIban && isValidIBAN(anyEvt.iban) ? anyEvt.iban : "");
-    linha.ele("C2").txt(bicValid ? bic : (anyEvt.bic ?? ""));
+    linha.ele("C1").txt(ibanValid ? ibanNorm : "");
+    linha.ele("C2").txt(bicValid ? bicNorm : "");
   }
 
   return doc.end({ prettyPrint: false });
