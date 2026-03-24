@@ -6,6 +6,7 @@ const countries = require('i18n-iso-countries');
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const { isValid: isValidIBAN } = require('iban');
 import type { IncomeEvent } from "@fiscal-guard/types";
+import { logger } from './logger';
 
 const NS = "http://www.at.gov.pt/schemas/irs/modelo3/2026";
 
@@ -20,16 +21,6 @@ const UNKNOWN_NIF_PLACEHOLDER = "999999990"; // AT placeholder when payer NIF un
 // but should be centralized if used across multiple modules.
 (Decimal as any).set({ precision: 20, rounding: (Decimal as any).ROUND_HALF_UP });
 
-function structuredWarn(message: string, meta?: Record<string, any>) {
-  const payload: Record<string, any> = { event: 'anexoj', level: 'warn', message };
-  if (meta) payload.meta = meta;
-  try {
-    console.warn(JSON.stringify(payload));
-  } catch (e) {
-    // Fallback to plain warn if serialization fails
-    console.warn(message, meta);
-  }
-}
 
 function iso2To3(alpha2: string): string {
   if (!alpha2) return "";
@@ -39,7 +30,7 @@ function iso2To3(alpha2: string): string {
     const code = countries.alpha2ToAlpha3(s.toUpperCase());
     return code ?? "";
   } catch (e) {
-    structuredWarn("Unable to convert country code", { alpha2, error: String(e) });
+    logger.warn("Unable to convert country code", { alpha2, error: String(e) });
     return "";
   }
 }
@@ -129,7 +120,7 @@ function centsToDecimalString(cents: number | string): string {
     const d = new (Decimal as any)(centsInt).dividedBy(100);
     return (d as any).toFixed(2);
   } catch (e) {
-    structuredWarn('Failed to format cents value', { cents, error: String(e) });
+    logger.warn('Failed to format cents value', { cents, error: String(e) });
     return '0.00';
   }
 }
@@ -186,7 +177,7 @@ export function mapToAnexoJ(events: IncomeEvent[]): string {
     // C4: Tax paid abroad — if provided on event (payerTaxPaidCents), else 0.00
     let taxPaidCents = parseMoneyToCents(anyEvt.payerTaxPaidCents);
     if (taxPaidCents < 0) {
-      structuredWarn("Negative payerTaxPaidCents for event", { eventId: anyEvt.id, value: taxPaidCents });
+      logger.warn("Negative payerTaxPaidCents for event", { eventId: anyEvt.id, value: taxPaidCents });
       taxPaidCents = 0; // clamp negative values
     }
     linha.ele("C4").txt(centsToDecimalString(taxPaidCents));
@@ -213,7 +204,7 @@ export function mapToAnexoJ(events: IncomeEvent[]): string {
 
     // Require at least one valid identifier before emitting
     if (!ibanValid && !bicValid) {
-      if (hasIban || hasBic) structuredWarn('Skipping Quadro8 entry: no valid IBAN or BIC', { eventId: anyEvt.id, iban: rawIban, bic: rawBic });
+      if (hasIban || hasBic) logger.warn('Skipping Quadro8 entry: no valid IBAN or BIC', { eventId: anyEvt.id, iban: rawIban, bic: rawBic });
       continue;
     }
 
