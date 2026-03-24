@@ -35,36 +35,87 @@ function iso2To3(alpha2: string): string {
 
 function normalizeIban(iban: string): string {
   if (!iban) return "";
-  return iban.toString().replace(/\s+/g, '').toUpperCase();
+  // Remove all non-alphanumeric characters and uppercase
+  return iban.toString().replace(/[^A-Z0-9]/gi, '').toUpperCase();
 }
 
 function normalizeBic(bic: string): string {
   if (!bic) return "";
-  return bic.toString().trim().toUpperCase();
+  // Remove non-alphanumeric and uppercase
+  return bic.toString().replace(/[^A-Z0-9]/gi, '').toUpperCase();
+}
+
+function parseMoneyToCents(input: string | number): number {
+  if (input == null) return 0;
+  if (typeof input === 'number') {
+    // treat numeric input as cents if it's an integer; if float, treat as euros
+    if (Number.isInteger(input)) return input;
+    return Math.round(input * 100);
+  }
+  let s = input.toString().trim();
+  if (!s) return 0;
+  // remove currency symbols and NBSPs
+  s = s.replace(/[€$£\s\u00A0]/g, '');
+
+  // If both separators present, decide by last separator position
+  const hasDot = s.indexOf('.') !== -1;
+  const hasComma = s.indexOf(',') !== -1;
+  if (hasDot && hasComma) {
+    if (s.lastIndexOf(',') > s.lastIndexOf('.')) {
+      // format like 1.234,56 -> remove '.' thousands, replace ',' with '.' decimal
+      s = s.replace(/\./g, '').replace(',', '.');
+      const euros = new (Decimal as any)(s).toNumber();
+      return Math.round(euros * 100);
+    } else {
+      // format like 1,234.56 -> remove ',' thousands
+      s = s.replace(/,/g, '');
+      const euros = new (Decimal as any)(s).toNumber();
+      return Math.round(euros * 100);
+    }
+  }
+
+  if (hasComma && !hasDot) {
+    // ambiguous: if there are exactly 2 digits after comma, treat as decimal separator
+    const parts = s.split(',');
+    const last = parts[parts.length - 1] ?? '';
+    if (last.length === 2) {
+      s = s.replace(/\./g, '').replace(',', '.');
+      const euros = new (Decimal as any)(s).toNumber();
+      return Math.round(euros * 100);
+    }
+    // otherwise treat as integer cents with commas as thousand separators: remove commas
+    s = s.replace(/,/g, '');
+    if (/^\d+$/.test(s)) return parseInt(s, 10);
+    const num = Number(s);
+    return Number.isFinite(num) ? Math.round(num) : 0;
+  }
+
+  if (hasDot && !hasComma) {
+    const parts = s.split('.');
+    const last = parts[parts.length - 1] ?? '';
+    if (last.length === 2) {
+      // treat as euros float
+      const euros = new (Decimal as any)(s).toNumber();
+      return Math.round(euros * 100);
+    }
+    // otherwise treat as integer cents with dots as thousand separators
+    s = s.replace(/\./g, '');
+    if (/^\d+$/.test(s)) return parseInt(s, 10);
+    const num = Number(s);
+    return Number.isFinite(num) ? Math.round(num) : 0;
+  }
+
+  // only digits -> interpret as cents integer
+  if (/^\d+$/.test(s)) return parseInt(s, 10);
+  // fallback: try parse as float euros
+  const num = Number(s);
+  return Number.isFinite(num) ? Math.round(num * 100) : 0;
 }
 
 function centsToDecimalString(cents: number | string): string {
-  if (cents == null || cents === "") return "0.00";
+  const centsInt = parseMoneyToCents(cents as any);
   try {
-    if (typeof cents === 'string') {
-      let s = cents.trim();
-      // remove common currency symbols and spaces
-      s = s.replace(/[€$£\s]/g, '');
-      // remove thousand separators like commas
-      s = s.replace(/,/g, '');
-      if (s === '') return '0.00';
-      if (s.includes('.')) {
-        // treat as euros float
-        const d = new (Decimal as any)(s);
-        return (d as any).toFixed(2);
-      }
-      // digits-only: interpret as cents
-      const d = new (Decimal as any)(s).dividedBy(100);
-      return (d as any).toFixed(2);
-    }
-
-    // number input: interpret as cents
-    const d = new (Decimal as any)(cents).dividedBy(100);
+    const d = new (Decimal as any)(centsInt).dividedBy(100);
     return (d as any).toFixed(2);
   } catch (e) {
     console.warn('Failed to format cents value', cents, e);
@@ -162,6 +213,7 @@ export function mapToAnexoJ(events: IncomeEvent[]): string {
 
   // Quadro8: Foreign accounts (if events include iban/bic)
   const quadro8 = doc.ele("Quadro8");
+  const seenQuadro8 = new Set<string>();
   for (const evt of events) {
     const anyEvt = evt as any;
     const rawIban = anyEvt.iban ?? '';
@@ -180,9 +232,14 @@ export function mapToAnexoJ(events: IncomeEvent[]): string {
       continue;
     }
 
-    const linha = quadro8.ele("Linha");
-    linha.ele("C1").txt(ibanValid ? ibanNorm : "");
-    linha.ele("C2").txt(bicValid ? bicNorm : "");
+      const key = ibanValid ? `IBAN:${ibanNorm}` : `BIC:${bicNorm}`;
+    // dedupe: ensure we only emit unique account lines per key per document
+    if (!seenQuadro8.has(key)) {
+      seenQuadro8.add(key);
+      const linha = quadro8.ele("Linha");
+      if (ibanValid) linha.ele("C1").txt(ibanNorm);
+      if (bicValid) linha.ele("C2").txt(bicNorm);
+    }
   }
 
   return doc.end({ prettyPrint: false });
