@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Modelo3 xmlns="http://www.at.gov.pt/schemas/irs/modelo3/2026">
+  <AnexoJ>
+    <Quadro4>
+      <Linha>
+        <C1>USA</C1>
+        <C2>401</C2>
+        <C3>1000.00</C3>
+        <C4>0.00</C4>
+      </Linha>
+    </Quadro4>
+  </AnexoJ>
+</Modelo3>
