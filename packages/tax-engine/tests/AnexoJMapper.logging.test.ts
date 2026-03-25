@@ -27,7 +27,7 @@ describe('AnexoJ logging and masking', () => {
   });
 
   it('parses very large monetary values with acceptable precision', () => {
-    const { Decimal } = require('../../shared-utils/src');
+    const { Decimal } = require('@fiscal-guard/shared-utils');
     const evt = {
       id: 'evt2',
       source: 'FOREIGN',
