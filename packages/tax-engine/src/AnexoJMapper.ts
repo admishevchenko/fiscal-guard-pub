@@ -125,7 +125,9 @@ function parseMoneyToCents(input: string | number): any /* Decimal representing 
 function centsToDecimalString(cents: number | string | any): string {
   const centsDec = parseMoneyToCents(cents as any);
   try {
-    const d = new Decimal(centsDec).dividedBy(100);
+    // If parseMoneyToCents already returned a Decimal-like object, use it directly to avoid valueOf -> number conversion
+    const centsDecimal = (centsDec && typeof (centsDec as any).dividedBy === 'function') ? (centsDec as any) : new Decimal(centsDec as any);
+    const d = centsDecimal.dividedBy(100);
     return (d as any).toFixed(2);
   } catch (e) {
     logger.warn('Failed to format cents value', { cents, error: String(e) });
