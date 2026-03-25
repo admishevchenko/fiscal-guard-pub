@@ -20,11 +20,11 @@
   "dependencies": {
     "@fiscal-guard/types": "workspace:*",
     "@fiscal-guard/shared-utils": "workspace:*",
-    "decimal.js": "^10.4.3",
     "xmlbuilder2": "^4.0.0",
     "i18n-iso-countries": "^7.0.0",
     "iban": "^0.0.14"
   },
+
   "devDependencies": {
     "@types/node": "^22.13.5",
     "typescript": "^5.7.3",

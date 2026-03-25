@@ -44,12 +44,18 @@ function normalizeBic(bic: string): string {
   return bic.toString().replace(/[^A-Z0-9]/gi, '').toUpperCase();
 }
 
+function maskSensitive(v?: string): string {
+  if (!v) return '';
+  // preserve last 4 characters, mask rest
+  return v.replace(/.(?=.{4})/g, '*');
+}
+
 function parseMoneyToCents(input: string | number): number {
   if (input == null) return 0;
   if (typeof input === 'number') {
     // treat numeric input as cents if it's an integer; if float, treat as euros
     if (Number.isInteger(input)) return input;
-    return Math.round(input * 100);
+    return new Decimal(input).times(100).toDecimalPlaces(0, (Decimal as any).ROUND_HALF_UP).toNumber();
   }
   let s = input.toString().trim();
   if (!s) return 0;
@@ -63,13 +69,11 @@ function parseMoneyToCents(input: string | number): number {
     if (s.lastIndexOf(',') > s.lastIndexOf('.')) {
       // format like 1.234,56 -> remove '.' thousands, replace ',' with '.' decimal
       s = s.replace(/\./g, '').replace(',', '.');
-      const euros = new Decimal(s).toNumber();
-      return Math.round(euros * 100);
+      return new Decimal(s).times(100).toDecimalPlaces(0, (Decimal as any).ROUND_HALF_UP).toNumber();
     } else {
       // format like 1,234.56 -> remove ',' thousands
       s = s.replace(/,/g, '');
-      const euros = new Decimal(s).toNumber();
-      return Math.round(euros * 100);
+      return new Decimal(s).times(100).toDecimalPlaces(0, (Decimal as any).ROUND_HALF_UP).toNumber();
     }
   }
 
@@ -79,14 +83,16 @@ function parseMoneyToCents(input: string | number): number {
     const last = parts[parts.length - 1] ?? '';
     if (last.length === 2) {
       s = s.replace(/\./g, '').replace(',', '.');
-      const euros = new Decimal(s).toNumber();
-      return Math.round(euros * 100);
+      return new Decimal(s).times(100).toDecimalPlaces(0, (Decimal as any).ROUND_HALF_UP).toNumber();
     }
     // otherwise treat as integer cents with commas as thousand separators: remove commas
     s = s.replace(/,/g, '');
     if (/^\d+$/.test(s)) return parseInt(s, 10);
-    const num = Number(s);
-    return Number.isFinite(num) ? Math.round(num) : 0;
+    try {
+      return new Decimal(s).times(100).toDecimalPlaces(0, (Decimal as any).ROUND_HALF_UP).toNumber();
+    } catch (e) {
+      return 0;
+    }
   }
 
   if (hasDot && !hasComma) {
@@ -94,21 +100,26 @@ function parseMoneyToCents(input: string | number): number {
     const last = parts[parts.length - 1] ?? '';
     if (last.length === 2) {
       // treat as euros float
-      const euros = new Decimal(s).toNumber();
-      return Math.round(euros * 100);
+      return new Decimal(s).times(100).toDecimalPlaces(0, (Decimal as any).ROUND_HALF_UP).toNumber();
     }
     // otherwise treat as integer cents with dots as thousand separators
     s = s.replace(/\./g, '');
     if (/^\d+$/.test(s)) return parseInt(s, 10);
-    const num = Number(s);
-    return Number.isFinite(num) ? Math.round(num) : 0;
+    try {
+      return new Decimal(s).times(100).toDecimalPlaces(0, (Decimal as any).ROUND_HALF_UP).toNumber();
+    } catch (e) {
+      return 0;
+    }
   }
 
   // only digits -> interpret as cents integer
   if (/^\d+$/.test(s)) return parseInt(s, 10);
   // fallback: try parse as float euros
-  const num = Number(s);
-  return Number.isFinite(num) ? Math.round(num * 100) : 0;
+  try {
+    return new Decimal(s).times(100).toDecimalPlaces(0, (Decimal as any).ROUND_HALF_UP).toNumber();
+  } catch (e) {
+    return 0;
+  }
 }
 
 function centsToDecimalString(cents: number | string): string {
@@ -201,7 +212,7 @@ export function mapToAnexoJ(events: IncomeEvent[]): string {
 
     // Require at least one valid identifier before emitting
     if (!ibanValid && !bicValid) {
-      if (hasIban || hasBic) logger.warn('Skipping Quadro8 entry: no valid IBAN or BIC', { eventId: anyEvt.id, iban: rawIban, bic: rawBic });
+      if (hasIban || hasBic) logger.warn('Skipping Quadro8 entry: no valid IBAN or BIC', { eventId: anyEvt.id, iban: maskSensitive(rawIban), bic: maskSensitive(rawBic) });
       continue;
     }
 
