@@ -1,6 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
 <!-- Placeholder XSD for Modelo3 2026. Replace with official AT XSD. -->
-<xsd:schema xmlns:xsd="http://www.w3.org/2001/XMLSchema" elementFormDefault="qualified">
-  <!-- Minimal placeholder to avoid CI errors when present. This schema intentionally only defines Modelo3 root. -->
+<xsd:schema xmlns:xsd="http://www.w3.org/2001/XMLSchema"
+            targetNamespace="http://www.at.gov.pt/schemas/irs/modelo3/2026"
+            xmlns="http://www.at.gov.pt/schemas/irs/modelo3/2026"
+            elementFormDefault="qualified">
+  <!-- Minimal placeholder to avoid CI errors when present. This schema intentionally only defines Modelo3 root in the expected namespace. -->
   <xsd:element name="Modelo3">
     <xsd:complexType>
       <xsd:sequence>
