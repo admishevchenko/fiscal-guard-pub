@@ -1,0 +1,23 @@
+name: Validate Modelo3 XML (XSD)
+
+on: [push, pull_request]
+
+jobs:
+  validate-xsd:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check for XSD and validate XML fixtures
+        run: |
+          if [ -f ".github/xsd/modelo3-2026.xsd" ]; then
+            echo "XSD found at .github/xsd/modelo3-2026.xsd"
+            sudo apt-get update && sudo apt-get install -y libxml2-utils
+            set -e
+            for f in $(git ls-files 'packages/**/test-fixtures/*.xml' || true); do
+              echo "Validating $f"
+              xmllint --noout --schema .github/xsd/modelo3-2026.xsd "$f"
+            done
+            echo "Validation complete"
+          else
+            echo "No XSD found at .github/xsd/modelo3-2026.xsd — skipping validation"
+          fi

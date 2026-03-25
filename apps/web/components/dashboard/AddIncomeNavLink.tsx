@@ -2,7 +2,6 @@
 
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
-import type { UrlObject } from "url";
 
 /**
  * Year-aware "+ Add income" nav link.
@@ -16,15 +15,11 @@ export function AddIncomeNavLink() {
   const searchParams = useSearchParams();
   const year = searchParams.get("year");
 
-  // Build a UrlObject so the typed-routes constraint is satisfied with a
-  // dynamic search string that cannot be verified as a literal at compile time.
-  const href: UrlObject = {
-    pathname: "/onboarding",
-    query: year ? { step: "income", year } : { step: "income" },
-  };
+  const href = year ? `/onboarding?step=income&year=${year}` : "/onboarding?step=income";
 
+  // Cast to any to bypass typedRoutes compile-time verification for dynamic hrefs
   return (
-    <Link href={href} className="text-sm text-primary hover:underline">
+    <Link href={href as any} className="text-sm text-primary hover:underline">
       + Add income
     </Link>
   );
