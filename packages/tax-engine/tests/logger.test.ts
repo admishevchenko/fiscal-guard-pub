@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { logger } from '../../shared-utils/src';
+import { logger } from '@fiscal-guard/shared-utils';
 
 describe('logger util', () => {
   it('logger.warn emits structured JSON payload', () => {
