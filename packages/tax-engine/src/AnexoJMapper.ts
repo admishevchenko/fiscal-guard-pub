@@ -69,10 +69,20 @@ function parseMoneyToCents(input: string | number): string /* integer cents as s
     if (s.lastIndexOf(',') > s.lastIndexOf('.')) {
       // format like 1.234,56 -> remove '.' thousands, replace ',' with '.' decimal
       s = s.replace(/\./g, '').replace(',', '.');
+      // if exactly 2 decimals, build cents string by concatenation to avoid Decimal rounding
+      const parts = s.split('.');
+      const intPart = parts[0] ?? '0';
+      const frac = parts[1] ?? '';
+      if (frac.length === 2) return (intPart + frac).replace(/^0+(?=\d)/, '');
       return (new Decimal(s).times(100).toDecimalPlaces(0, (Decimal as any).ROUND_HALF_UP) as any).toFixed(0);
     } else {
       // format like 1,234.56 -> remove ',' thousands
       s = s.replace(/,/g, '');
+      // if exactly 2 decimals, build cents string by concatenation
+      const parts = s.split('.');
+      const intPart = parts[0] ?? '0';
+      const frac = parts[1] ?? '';
+      if (frac.length === 2) return (intPart + frac).replace(/^0+(?=\d)/, '');
       return (new Decimal(s).times(100).toDecimalPlaces(0, (Decimal as any).ROUND_HALF_UP) as any).toFixed(0);
     }
   }
@@ -83,6 +93,10 @@ function parseMoneyToCents(input: string | number): string /* integer cents as s
     const last = parts[parts.length - 1] ?? '';
     if (last.length === 2) {
       s = s.replace(/\./g, '').replace(',', '.');
+      const parts = s.split('.');
+      const intPart = parts[0] ?? '0';
+      const frac = parts[1] ?? '';
+      if (frac.length === 2) return (intPart + frac).replace(/^0+(?=\d)/, '');
       return (new Decimal(s).times(100).toDecimalPlaces(0, (Decimal as any).ROUND_HALF_UP) as any).toFixed(0);
     }
     // otherwise treat as integer cents with commas as thousand separators: remove commas
@@ -100,6 +114,10 @@ function parseMoneyToCents(input: string | number): string /* integer cents as s
     const last = parts[parts.length - 1] ?? '';
     if (last.length === 2) {
       // treat as euros float
+      const parts = s.split('.');
+      const intPart = parts[0] ?? '0';
+      const frac = parts[1] ?? '';
+      if (frac.length === 2) return (intPart + frac).replace(/^0+(?=\d)/, '');
       return (new Decimal(s).times(100).toDecimalPlaces(0, (Decimal as any).ROUND_HALF_UP) as any).toFixed(0);
     }
     // otherwise treat as integer cents with dots as thousand separators
@@ -190,7 +208,7 @@ export function mapToAnexoJ(events: IncomeEvent[]): string {
       logger.warn("Negative payerTaxPaidCents for event", { eventId: anyEvt.id, value: taxPaidCentsStr });
       taxPaidDec = new Decimal(0);
     }
-    linha.ele("C4").txt(centsToDecimalString(taxPaidCentsStr));
+    linha.ele("C4").txt(centsToDecimalString(taxPaidDec.toFixed(0)));
 
     // Payer NIF handling (use sentinel when missing)
     const payerNif = anyEvt.payerNif ?? "";
