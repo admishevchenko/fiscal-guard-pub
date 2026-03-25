@@ -101,7 +101,7 @@ function parseMoneyToCents(input: string | number): string /* integer cents as s
     }
     // otherwise treat as integer cents with commas as thousand separators: remove commas
     s = s.replace(/,/g, '');
-    if (/^\d+$/.test(s)) return String(parseInt(s, 10));
+    if (/^\d+$/.test(s)) return s.replace(/^0+(?=\d)/, '');
     try {
       return (new Decimal(s).times(100).toDecimalPlaces(0, (Decimal as any).ROUND_HALF_UP) as any).toFixed(0);
     } catch (e) {
@@ -122,7 +122,7 @@ function parseMoneyToCents(input: string | number): string /* integer cents as s
     }
     // otherwise treat as integer cents with dots as thousand separators
     s = s.replace(/\./g, '');
-    if (/^\d+$/.test(s)) return String(parseInt(s, 10));
+    if (/^\d+$/.test(s)) return s.replace(/^0+(?=\d)/, '');
     try {
       return (new Decimal(s).times(100).toDecimalPlaces(0, (Decimal as any).ROUND_HALF_UP) as any).toFixed(0);
     } catch (e) {
@@ -131,7 +131,7 @@ function parseMoneyToCents(input: string | number): string /* integer cents as s
   }
 
   // only digits -> interpret as cents integer
-  if (/^\d+$/.test(s)) return String(parseInt(s, 10));
+  if (/^\d+$/.test(s)) return s.replace(/^0+(?=\d)/, '');
   // fallback: try parse as float euros
   try {
     return (new Decimal(s).times(100).toDecimalPlaces(0, (Decimal as any).ROUND_HALF_UP) as any).toFixed(0);
