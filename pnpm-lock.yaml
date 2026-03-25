@@ -152,8 +152,17 @@ importers:
         specifier: ^2.1.8
         version: 2.1.9(@types/node@22.19.15)(jsdom@28.1.0(@noble/hashes@1.8.0))(lightningcss@1.31.1)(msw@2.12.10(@types/node@22.19.15)(typescript@5.9.3))
 
+  packages/shared-utils:
+    dependencies:
+      decimal.js:
+        specifier: ^10.4.3
+        version: 10.6.0
+
   packages/tax-engine:
     dependencies:
+      '@fiscal-guard/shared-utils':
+        specifier: workspace:*
+        version: link:../shared-utils
       '@fiscal-guard/types':
         specifier: workspace:*
         version: link:../types
