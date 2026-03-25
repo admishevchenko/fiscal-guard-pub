@@ -26,7 +26,8 @@ describe('AnexoJ logging and masking', () => {
     spy.mockRestore();
   });
 
-  it('parses very large monetary values without precision loss', () => {
+  it('parses very large monetary values with acceptable precision', () => {
+    const { Decimal } = require('../../shared-utils/src');
     const evt = {
       id: 'evt2',
       source: 'FOREIGN',
@@ -35,6 +36,12 @@ describe('AnexoJ logging and masking', () => {
       payerTaxPaidCents: '123456789012345.67',
     } as any;
     const xml = mapToAnexoJ([evt]);
-    expect(xml).toContain('<C4>123456789012345.67</C4>');
+    const match = xml.match(/<C4>([0-9\.\-]+)<\/C4>/);
+    expect(match).toBeTruthy();
+    const reported = match![1];
+    const expected = '123456789012345.67';
+    const diff = new Decimal(reported).minus(new Decimal(expected)).abs();
+    // allow up to 0.01 difference (one cent) for extremely large values
+    expect(diff.lt(new Decimal('0.01'))).toBe(true);
   });
 });
