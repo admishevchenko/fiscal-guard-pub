@@ -1,0 +1,1 @@
+This folder is for Modelo3 XML fixtures used by CI XSD validation. Place representative XML files here (e.g., sample-modelo3.xml). The CI workflow will validate any *.xml files here against .github/xsd/modelo3-2026.xsd if present.

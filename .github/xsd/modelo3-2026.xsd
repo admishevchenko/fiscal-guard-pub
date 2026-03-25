@@ -1,0 +1,11 @@
+<!-- Placeholder XSD for Modelo3 2026. Replace with official AT XSD. -->
+<xsd:schema xmlns:xsd="http://www.w3.org/2001/XMLSchema" elementFormDefault="qualified">
+  <!-- Minimal placeholder to avoid CI errors when present. This schema intentionally only defines Modelo3 root. -->
+  <xsd:element name="Modelo3">
+    <xsd:complexType>
+      <xsd:sequence>
+        <xsd:element name="AnexoJ" minOccurs="0" maxOccurs="1"/>
+      </xsd:sequence>
+    </xsd:complexType>
+  </xsd:element>
+</xsd:schema>

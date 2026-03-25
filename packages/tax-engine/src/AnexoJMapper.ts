@@ -1,5 +1,5 @@
 import { create } from "xmlbuilder2";
-import { Decimal, logger } from '../../shared-utils/src';
+import { Decimal, logger } from '@fiscal-guard/shared-utils';
 // Use require-style imports for these CJS modules to avoid TS resolution issues in this workspace
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const countries = require('i18n-iso-countries');
